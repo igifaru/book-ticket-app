@@ -15,13 +15,13 @@ class PaymentScreen extends StatefulWidget {
   final int passengers;
 
   const PaymentScreen({
-    Key? key,
+    super.key,
     required this.bus,
     required this.from,
     required this.to,
     required this.date,
     required this.passengers,
-  }) : super(key: key);
+  });
 
   @override
   _PaymentScreenState createState() => _PaymentScreenState();

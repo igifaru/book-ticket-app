@@ -5,7 +5,7 @@ import 'package:tickiting/utils/theme.dart';
 import 'package:tickiting/utils/database_helper.dart';
 
 class AdminUsers extends StatefulWidget {
-  const AdminUsers({Key? key}) : super(key: key);
+  const AdminUsers({super.key});
 
   @override
   _AdminUsersState createState() => _AdminUsersState();

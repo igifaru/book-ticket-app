@@ -13,6 +13,7 @@ class Booking {
   final String paymentStatus;
   final String bookingStatus;
   final String? createdAt;
+  bool notificationSent; // Added field to track if notifications have been sent
 
   Booking({
     required this.id,
@@ -28,6 +29,7 @@ class Booking {
     required this.paymentStatus,
     required this.bookingStatus,
     this.createdAt,
+    this.notificationSent = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -45,6 +47,7 @@ class Booking {
       'payment_status': paymentStatus,
       'booking_status': bookingStatus,
       'created_at': createdAt ?? DateTime.now().toIso8601String(),
+      'notification_sent': notificationSent ? 1 : 0,
     };
   }
 
@@ -63,6 +66,7 @@ class Booking {
       paymentStatus: map['payment_status'],
       bookingStatus: map['booking_status'],
       createdAt: map['created_at'],
+      notificationSent: map['notification_sent'] == 1,
     );
   }
 }

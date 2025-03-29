@@ -20,7 +20,7 @@ class TicketScreen extends StatefulWidget {
   final String? bookingId;
 
   const TicketScreen({
-    Key? key,
+    super.key,
     this.isNewTicket = false,
     this.bus,
     this.from,
@@ -29,7 +29,7 @@ class TicketScreen extends StatefulWidget {
     this.passengers,
     this.seatNumbers,
     this.bookingId,
-  }) : super(key: key);
+  });
 
   @override
   _TicketScreenState createState() => _TicketScreenState();

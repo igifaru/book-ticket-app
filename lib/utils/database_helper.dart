@@ -26,7 +26,12 @@ class DatabaseHelper {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = join(documentsDirectory.path, 'rwanda_bus.db');
 
-    return await openDatabase(path, version: 1, onCreate: _onCreate);
+    return await openDatabase(
+      path, 
+      version: 2, 
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+    );
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -73,14 +78,61 @@ class DatabaseHelper {
         payment_method TEXT NOT NULL,
         payment_status TEXT NOT NULL,
         booking_status TEXT NOT NULL,
+        notification_sent INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id),
         FOREIGN KEY(bus_id) REFERENCES buses(id)
       )
     ''');
+    
+    // Create notifications table
+    await db.execute('''
+      CREATE TABLE notifications(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        time TEXT NOT NULL,
+        isRead INTEGER NOT NULL DEFAULT 0,
+        type TEXT NOT NULL,
+        recipient TEXT NOT NULL,
+        userId INTEGER,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
 
     // Insert some initial data
     await _insertInitialData(db);
+  }
+  
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add notifications table if upgrading from version 1
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS notifications(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          time TEXT NOT NULL,
+          isRead INTEGER NOT NULL DEFAULT 0,
+          type TEXT NOT NULL,
+          recipient TEXT NOT NULL,
+          userId INTEGER,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+      
+      // Add notification_sent column to bookings table if it doesn't exist
+      await addNotificationSentColumnToBookings(db);
+    }
+  }
+  
+  Future<void> addNotificationSentColumnToBookings(Database db) async {
+    try {
+      await db.execute("ALTER TABLE bookings ADD COLUMN notification_sent INTEGER DEFAULT 0");
+    } catch (e) {
+      // Column might already exist
+      print("Error adding notification_sent column: $e");
+    }
   }
 
   Future<void> _insertInitialData(Database db) async {
@@ -274,7 +326,6 @@ class DatabaseHelper {
   }
 
   // Booking CRUD operations
-  // lib/utils/database_helper.dart
   Future<int> insertBooking(Booking booking) async {
     Database db = await database;
 
@@ -288,20 +339,20 @@ class DatabaseHelper {
 
     return await db.insert('bookings', bookingMap);
   }
-  // Add this method to lib/utils/database_helper.dart
-Future<User?> getUserById(int userId) async {
-  Database db = await database;
-  List<Map<String, dynamic>> maps = await db.query(
-    'users',
-    where: 'id = ?',
-    whereArgs: [userId],
-  );
+  
+  Future<User?> getUserById(int userId) async {
+    Database db = await database;
+    List<Map<String, dynamic>> maps = await db.query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
 
-  if (maps.isNotEmpty) {
-    return User.fromMap(maps.first);
+    if (maps.isNotEmpty) {
+      return User.fromMap(maps.first);
+    }
+    return null;
   }
-  return null;
-}
 
   Future<int> updateBookingStatus(String id, String status) async {
     Database db = await database;
@@ -341,6 +392,132 @@ Future<User?> getUserById(int userId) async {
     return List.generate(maps.length, (i) {
       return Booking.fromMap(maps[i]);
     });
+  }
+
+  // Notification operations
+  Future<int> insertNotification(Map<String, dynamic> notification) async {
+    Database db = await database;
+    return await db.insert('notifications', notification);
+  }
+  
+  Future<List<Map<String, dynamic>>> getNotifications({
+    String? recipient,
+    int? userId,
+  }) async {
+    Database db = await database;
+    String? whereClause;
+    List<dynamic>? whereArgs;
+    
+    if (recipient != null && userId != null) {
+      whereClause = 'recipient = ? AND userId = ?';
+      whereArgs = [recipient, userId];
+    } else if (recipient != null) {
+      whereClause = 'recipient = ?';
+      whereArgs = [recipient];
+    } else if (userId != null) {
+      whereClause = 'userId = ?';
+      whereArgs = [userId];
+    }
+    
+    return await db.query(
+      'notifications',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'time DESC',
+    );
+  }
+  
+  Future<int> markNotificationAsRead(int id) async {
+    Database db = await database;
+    return await db.update(
+      'notifications',
+      {'isRead': 1},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+  
+  Future<int> markAllNotificationsAsRead({String? recipient, int? userId}) async {
+    Database db = await database;
+    String? whereClause;
+    List<dynamic>? whereArgs;
+    
+    if (recipient != null && userId != null) {
+      whereClause = 'recipient = ? AND userId = ?';
+      whereArgs = [recipient, userId];
+    } else if (recipient != null) {
+      whereClause = 'recipient = ?';
+      whereArgs = [recipient];
+    } else if (userId != null) {
+      whereClause = 'userId = ?';
+      whereArgs = [userId];
+    }
+    
+    return await db.update(
+      'notifications',
+      {'isRead': 1},
+      where: whereClause,
+      whereArgs: whereArgs,
+    );
+  }
+  
+  Future<int> deleteNotification(int id) async {
+    Database db = await database;
+    return await db.delete(
+      'notifications',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+  
+  Future<int> getUnreadNotificationsCount({String? recipient, int? userId}) async {
+    Database db = await database;
+    String? whereClause;
+    List<dynamic>? whereArgs;
+    
+    if (recipient != null && userId != null) {
+      whereClause = 'recipient = ? AND userId = ? AND isRead = ?';
+      whereArgs = [recipient, userId, 0];
+    } else if (recipient != null) {
+      whereClause = 'recipient = ? AND isRead = ?';
+      whereArgs = [recipient, 0];
+    } else if (userId != null) {
+      whereClause = 'userId = ? AND isRead = ?';
+      whereArgs = [userId, 0];
+    } else {
+      whereClause = 'isRead = ?';
+      whereArgs = [0];
+    }
+    
+    List<Map<String, dynamic>> result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM notifications WHERE $whereClause',
+      whereArgs,
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+  
+  // Update booking notification status
+  Future<int> updateBookingNotificationStatus(String bookingId, bool sent) async {
+    Database db = await database;
+    return await db.update(
+      'bookings',
+      {'notification_sent': sent ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [bookingId],
+    );
+  }
+  
+  // Add notification_sent column to bookings table if it doesn't exist
+  Future<void> addNotificationSentColumnIfNeeded() async {
+    final db = await database;
+    
+    // Check if the notification_sent column exists in the bookings table
+    var tableInfo = await db.rawQuery("PRAGMA table_info(bookings)");
+    bool hasColumn = tableInfo.any((column) => column['name'] == 'notification_sent');
+    
+    if (!hasColumn) {
+      await addNotificationSentColumnToBookings(db);
+    }
   }
 
   // Additional utility methods
@@ -393,6 +570,7 @@ Future<User?> getUserById(int userId) async {
     Database db = await database;
     await db.delete('bookings');
     await db.delete('buses');
+    await db.delete('notifications');
     await db.delete('users');
   }
 }

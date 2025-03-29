@@ -1,7 +1,6 @@
 // In lib/screens/welcome_screen.dart
 import 'package:flutter/material.dart';
 import 'package:tickiting/screens/auth/login_screen.dart';
-import 'package:tickiting/screens/auth/signup_screen.dart';
 import 'package:tickiting/utils/theme.dart';
 import 'dart:async';
 import 'package:tickiting/utils/admin_login_dialog.dart'; // Import the admin login helper
@@ -16,7 +15,7 @@ class WelcomeScreen extends StatefulWidget {
 class _WelcomeScreenState extends State<WelcomeScreen> {
   // Counter for logo taps
   int _logoTapCount = 0;
-  
+
   // Timer to reset tap count if user doesn't tap quickly enough
   Timer? _tapTimer;
 
@@ -25,24 +24,24 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     setState(() {
       _logoTapCount++;
     });
-    
+
     // Cancel existing timer
     _tapTimer?.cancel();
-    
+
     // Set new timer to reset the counter after 2 seconds of inactivity
     _tapTimer = Timer(const Duration(seconds: 2), () {
       setState(() {
         _logoTapCount = 0;
       });
     });
-    
+
     // If tapped 5 times, show admin login dialog
     if (_logoTapCount == 5) {
       setState(() {
         _logoTapCount = 0;
       });
       _tapTimer?.cancel();
-      
+
       // Show admin login dialog
       handleAdminAccess(context);
     }
@@ -101,10 +100,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             const Text(
               'Book your bus tickets easily and quickly',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-              ),
+              style: TextStyle(color: Colors.white, fontSize: 16),
             ),
             const SizedBox(height: 60),
             // Get Started button
@@ -131,29 +127,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               ),
             ),
             const SizedBox(height: 20),
+
             // Create account button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SignupScreen(),
-                    ),
-                  );
-                },
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.white),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                ),
-                child: const Text(
-                  'Create Account',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
           ],
         ),
       ),

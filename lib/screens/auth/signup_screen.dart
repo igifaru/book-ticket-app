@@ -7,7 +7,7 @@ import 'package:tickiting/utils/theme.dart';
 import 'package:tickiting/utils/database_helper.dart';
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({Key? key}) : super(key: key);
+  const SignupScreen({super.key});
 
   @override
   _SignupScreenState createState() => _SignupScreenState();

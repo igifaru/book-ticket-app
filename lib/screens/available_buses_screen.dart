@@ -12,12 +12,12 @@ class AvailableBusesScreen extends StatefulWidget {
   final int passengers;
 
   const AvailableBusesScreen({
-    Key? key,
+    super.key,
     required this.from,
     required this.to,
     required this.date,
     required this.passengers,
-  }) : super(key: key);
+  });
 
   @override
   _AvailableBusesScreenState createState() => _AvailableBusesScreenState();
@@ -26,7 +26,7 @@ class AvailableBusesScreen extends StatefulWidget {
 class _AvailableBusesScreenState extends State<AvailableBusesScreen> {
   List<Bus> availableBuses = [];
   bool _isLoading = true;
-  String _sortBy = 'Departure Time';
+  final String _sortBy = 'Departure Time';
 
   @override
   void initState() {

@@ -5,7 +5,7 @@ import 'package:tickiting/utils/theme.dart';
 import 'package:tickiting/utils/database_helper.dart';
 
 class AdminBuses extends StatefulWidget {
-  const AdminBuses({Key? key}) : super(key: key);
+  const AdminBuses({super.key});
 
   @override
   _AdminBusesState createState() => _AdminBusesState();
@@ -304,27 +304,27 @@ class _AdminBusesState extends State<AdminBuses> {
   }
 
   void _showAddEditBusDialog(BuildContext context, {Bus? bus, int? index}) {
-    final _formKey = GlobalKey<FormState>();
-    final _idController = TextEditingController(text: bus?.id ?? '');
-    final _nameController = TextEditingController(text: bus?.name ?? '');
-    final _departureTimeController = TextEditingController(
+    final formKey = GlobalKey<FormState>();
+    final idController = TextEditingController(text: bus?.id ?? '');
+    final nameController = TextEditingController(text: bus?.name ?? '');
+    final departureTimeController = TextEditingController(
       text: bus?.departureTime ?? '',
     );
-    final _arrivalTimeController = TextEditingController(
+    final arrivalTimeController = TextEditingController(
       text: bus?.arrivalTime ?? '',
     );
-    final _durationController = TextEditingController(
+    final durationController = TextEditingController(
       text: bus?.duration ?? '',
     );
-    final _priceController = TextEditingController(
+    final priceController = TextEditingController(
       text: bus?.price.toString() ?? '',
     );
-    final _seatsController = TextEditingController(
+    final seatsController = TextEditingController(
       text: bus?.availableSeats.toString() ?? '',
     );
 
-    String _busType = bus?.busType ?? 'Standard';
-    List<String> _features = List<String>.from(bus?.features ?? ['AC']);
+    String busType = bus?.busType ?? 'Standard';
+    List<String> features = List<String>.from(bus?.features ?? ['AC']);
 
     showDialog(
       context: context,
@@ -333,12 +333,12 @@ class _AdminBusesState extends State<AdminBuses> {
             title: Text(bus == null ? 'Add New Bus' : 'Edit Bus'),
             content: SingleChildScrollView(
               child: Form(
-                key: _formKey,
+                key: formKey,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextFormField(
-                      controller: _idController,
+                      controller: idController,
                       decoration: const InputDecoration(labelText: 'Bus ID'),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -349,7 +349,7 @@ class _AdminBusesState extends State<AdminBuses> {
                     ),
                     const SizedBox(height: 10),
                     TextFormField(
-                      controller: _nameController,
+                      controller: nameController,
                       decoration: const InputDecoration(labelText: 'Bus Name'),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -360,7 +360,7 @@ class _AdminBusesState extends State<AdminBuses> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: _busType,
+                      value: busType,
                       decoration: const InputDecoration(labelText: 'Bus Type'),
                       items:
                           ['Economy', 'Standard', 'Premium']
@@ -373,13 +373,13 @@ class _AdminBusesState extends State<AdminBuses> {
                               .toList(),
                       onChanged: (value) {
                         if (value != null) {
-                          _busType = value;
+                          busType = value;
                         }
                       },
                     ),
                     const SizedBox(height: 10),
                     TextFormField(
-                      controller: _departureTimeController,
+                      controller: departureTimeController,
                       decoration: const InputDecoration(
                         labelText: 'Departure Time',
                       ),
@@ -392,7 +392,7 @@ class _AdminBusesState extends State<AdminBuses> {
                     ),
                     const SizedBox(height: 10),
                     TextFormField(
-                      controller: _arrivalTimeController,
+                      controller: arrivalTimeController,
                       decoration: const InputDecoration(
                         labelText: 'Arrival Time',
                       ),
@@ -405,7 +405,7 @@ class _AdminBusesState extends State<AdminBuses> {
                     ),
                     const SizedBox(height: 10),
                     TextFormField(
-                      controller: _durationController,
+                      controller: durationController,
                       decoration: const InputDecoration(labelText: 'Duration'),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -416,7 +416,7 @@ class _AdminBusesState extends State<AdminBuses> {
                     ),
                     const SizedBox(height: 10),
                     TextFormField(
-                      controller: _priceController,
+                      controller: priceController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'Price (RWF)',
@@ -433,7 +433,7 @@ class _AdminBusesState extends State<AdminBuses> {
                     ),
                     const SizedBox(height: 10),
                     TextFormField(
-                      controller: _seatsController,
+                      controller: seatsController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         labelText: 'Available Seats',
@@ -455,65 +455,65 @@ class _AdminBusesState extends State<AdminBuses> {
                     ),
                     CheckboxListTile(
                       title: const Text('AC'),
-                      value: _features.contains('AC'),
+                      value: features.contains('AC'),
                       onChanged: (value) {
                         setState(() {
                           if (value!) {
-                            _features.add('AC');
+                            features.add('AC');
                           } else {
-                            _features.remove('AC');
+                            features.remove('AC');
                           }
                         });
                       },
                     ),
                     CheckboxListTile(
                       title: const Text('WiFi'),
-                      value: _features.contains('WiFi'),
+                      value: features.contains('WiFi'),
                       onChanged: (value) {
                         setState(() {
                           if (value!) {
-                            _features.add('WiFi');
+                            features.add('WiFi');
                           } else {
-                            _features.remove('WiFi');
+                            features.remove('WiFi');
                           }
                         });
                       },
                     ),
                     CheckboxListTile(
                       title: const Text('USB Charging'),
-                      value: _features.contains('USB Charging'),
+                      value: features.contains('USB Charging'),
                       onChanged: (value) {
                         setState(() {
                           if (value!) {
-                            _features.add('USB Charging');
+                            features.add('USB Charging');
                           } else {
-                            _features.remove('USB Charging');
+                            features.remove('USB Charging');
                           }
                         });
                       },
                     ),
                     CheckboxListTile(
                       title: const Text('Refreshments'),
-                      value: _features.contains('Refreshments'),
+                      value: features.contains('Refreshments'),
                       onChanged: (value) {
                         setState(() {
                           if (value!) {
-                            _features.add('Refreshments');
+                            features.add('Refreshments');
                           } else {
-                            _features.remove('Refreshments');
+                            features.remove('Refreshments');
                           }
                         });
                       },
                     ),
                     CheckboxListTile(
                       title: const Text('TV'),
-                      value: _features.contains('TV'),
+                      value: features.contains('TV'),
                       onChanged: (value) {
                         setState(() {
                           if (value!) {
-                            _features.add('TV');
+                            features.add('TV');
                           } else {
-                            _features.remove('TV');
+                            features.remove('TV');
                           }
                         });
                       },
@@ -531,17 +531,17 @@ class _AdminBusesState extends State<AdminBuses> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  if (_formKey.currentState!.validate()) {
+                  if (formKey.currentState!.validate()) {
                     final newBus = Bus(
-                      id: _idController.text,
-                      name: _nameController.text,
-                      departureTime: _departureTimeController.text,
-                      arrivalTime: _arrivalTimeController.text,
-                      duration: _durationController.text,
-                      price: double.parse(_priceController.text),
-                      availableSeats: int.parse(_seatsController.text),
-                      busType: _busType,
-                      features: _features,
+                      id: idController.text,
+                      name: nameController.text,
+                      departureTime: departureTimeController.text,
+                      arrivalTime: arrivalTimeController.text,
+                      duration: durationController.text,
+                      price: double.parse(priceController.text),
+                      availableSeats: int.parse(seatsController.text),
+                      busType: busType,
+                      features: features,
                     );
 
                     try {

@@ -1,11 +1,15 @@
 // lib/screens/admin/admin_payments.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tickiting/models/booking.dart';
 import 'package:tickiting/utils/theme.dart';
 import 'package:tickiting/utils/database_helper.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:csv/csv.dart';
+import 'package:share_plus/share_plus.dart';
 
 class AdminPayments extends StatefulWidget {
-  const AdminPayments({Key? key}) : super(key: key);
+  const AdminPayments({super.key});
 
   @override
   _AdminPaymentsState createState() => _AdminPaymentsState();
@@ -40,6 +44,83 @@ class _AdminPaymentsState extends State<AdminPayments> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  // Export payments to CSV file without permission check
+  Future<void> exportPayments(List<Booking> payments) async {
+    try {
+      // Prepare the CSV data
+      List<List<dynamic>> csvData = [];
+      
+      // Add header row
+      csvData.add([
+        'Payment ID', 
+        'User ID', 
+        'From Location',
+        'To Location',
+        'Travel Date',
+        'Passengers',
+        'Seat Numbers',
+        'Amount', 
+        'Payment Method', 
+        'Payment Status',
+        'Booking Status',
+        'Created At'
+      ]);
+      
+      // Add payment data rows
+      for (var payment in payments) {
+        // If filtering by status, only include matching payments
+        if (_filterStatus == 'All' || payment.paymentStatus == _filterStatus) {
+          csvData.add([
+            payment.id,
+            payment.userId,
+            payment.fromLocation,
+            payment.toLocation,
+            payment.travelDate,
+            payment.passengers,
+            payment.seatNumbers,
+            payment.totalAmount,
+            payment.paymentMethod,
+            payment.paymentStatus,
+            payment.bookingStatus,
+            payment.createdAt ?? 'N/A',
+          ]);
+        }
+      }
+      
+      // Convert to CSV string
+      String csv = const ListToCsvConverter().convert(csvData);
+      
+      // Get the documents directory - this doesn't require permissions on most devices
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName = 'rwanda_bus_payments_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final filePath = '${directory.path}/$fileName';
+      
+      // Write the file
+      final File file = File(filePath);
+      await file.writeAsString(csv);
+      
+      // Share the file - this uses the OS-level sharing which handles permissions for us
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'Rwanda Bus Payments Export ($_filterStatus)',
+        text: 'Attached is the exported payments data from Rwanda Bus',
+      );
+    } catch (e) {
+      // Handle any errors that occur during export
+      print('Error exporting payments: $e');
+      // Show error message to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting payments: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      rethrow;
     }
   }
 
@@ -86,16 +167,56 @@ class _AdminPaymentsState extends State<AdminPayments> {
                 ),
                 const Spacer(),
                 OutlinedButton.icon(
-                  onPressed: () {
-                    // Export payments report
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Payment report exported'),
-                      ),
+                  onPressed: () async {
+                    // Show loading indicator
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (BuildContext context) {
+                        return const Dialog(
+                          child: Padding(
+                            padding: EdgeInsets.all(20.0),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircularProgressIndicator(),
+                                SizedBox(width: 20),
+                                Text("Exporting payments..."),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     );
+                    
+                    try {
+                      await exportPayments(filteredPayments);
+                      // Close loading dialog
+                      if (mounted) {
+                        Navigator.pop(context);
+                        
+                        // Show success message
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Payments exported successfully'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      // Close loading dialog
+                      if (mounted) {
+                        Navigator.pop(context);
+                      }
+                      
+                      // Error is already handled in exportPayments function
+                    }
                   },
                   icon: const Icon(Icons.download),
                   label: const Text('Export'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primaryColor,
+                  ),
                 ),
               ],
             ),
