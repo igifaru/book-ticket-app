@@ -1,11 +1,11 @@
-// lib/screens/auth/login_screen.dart (updated)
+// lib/screens/auth/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:tickiting/screens/auth/forgot_password_screen.dart';
 import 'package:tickiting/screens/auth/signup_screen.dart';
 import 'package:tickiting/screens/home_screen.dart';
 import 'package:tickiting/utils/theme.dart';
-import 'package:tickiting/utils/database_helper.dart'; // Add this import
-import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
+import 'package:tickiting/utils/database_helper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -29,54 +29,50 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // In the _login method of login_screen.dart
-  // Replace the current shared preferences usage in _login method
-void _login() async {
-  if (_formKey.currentState!.validate()) {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
-
-    try {
-      // Authenticate with database
-      final user = await DatabaseHelper().getUser(
-        _emailController.text,
-        _passwordController.text,
-      );
-
+  void _login() async {
+    if (_formKey.currentState!.validate()) {
       setState(() {
-        _isLoading = false;
+        _isLoading = true;
+        _errorMessage = '';
       });
 
-      if (user != null) {
-        // Login successful - Use a try-catch specifically for SharedPreferences
-        try {
+      try {
+        // Authenticate with database
+        final user = await DatabaseHelper().getUser(
+          _emailController.text,
+          _passwordController.text,
+        );
+
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (user != null) {
+          // Save user ID to shared preferences
           final prefs = await SharedPreferences.getInstance();
           await prefs.setInt('current_user_id', user.id!);
-        } catch (prefError) {
-          print('SharedPreferences error: $prefError');
-          // Continue anyway even if preferences saving fails
+
+          // Login successful
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
+          }
+        } else {
+          // Login failed
+          setState(() {
+            _errorMessage = 'Invalid email or password';
+          });
         }
-        
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
-      } else {
-        // Login failed
+      } catch (e) {
         setState(() {
-          _errorMessage = 'Invalid email or password';
+          _isLoading = false;
+          _errorMessage = 'An error occurred: $e';
         });
       }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'An error occurred: $e';
-      });
     }
   }
-}
 
   @override
   Widget build(BuildContext context) {

@@ -37,22 +37,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     try {
-      // Try to get current user ID from shared preferences
-      int? userId;
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        userId = prefs.getInt('current_user_id');
-      } catch (prefError) {
-        print('SharedPreferences error: $prefError');
-        // Use a fallback ID or mechanism if preferences fail
-        userId = 1; // Default to first user as fallback
-      }
+      // Get current user ID from shared preferences
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('current_user_id');
 
       if (userId != null) {
         // Fetch user data from database
         final user = await DatabaseHelper().getUserById(userId);
 
-        if (user != null) {
+        if (user != null && mounted) {
           setState(() {
             _currentUser = user;
             _nameController.text = user.name;
@@ -63,9 +56,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       print('Error loading user data: $e');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -196,13 +191,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.remove('current_user_id');
 
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const LoginScreen(),
-                    ),
-                    (route) => false,
-                  );
+                  if (mounted) {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LoginScreen(),
+                      ),
+                      (route) => false,
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 child: const Text('Logout'),
@@ -223,7 +220,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _currentUser == null
-              ? const Center(child: Text('User not found. Please login again.'))
+              ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('User not found. Please login again.'),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const LoginScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text('Go to Login'),
+                    ),
+                  ],
+                ),
+              )
               : SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -239,7 +255,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               0.1,
                             ),
                             child: Text(
-                              _currentUser!.name.substring(0, 1).toUpperCase(),
+                              _currentUser!.name.isNotEmpty
+                                  ? _currentUser!.name
+                                      .substring(0, 1)
+                                      .toUpperCase()
+                                  : "?",
                               style: const TextStyle(
                                 fontSize: 40,
                                 fontWeight: FontWeight.bold,
