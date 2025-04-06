@@ -14,11 +14,33 @@ class AdminBuses extends StatefulWidget {
 class _AdminBusesState extends State<AdminBuses> {
   List<Bus> buses = [];
   bool _isLoading = true;
+  final List<String> locations = [
+    'Kigali',
+    'Butare',
+    'Gisenyi',
+    'Ruhengeri',
+    'Cyangugu',
+    'Kibungo',
+    'Gitarama',
+    'Byumba',
+    'Huye',
+    'Musanze',
+  ];
 
   @override
   void initState() {
     super.initState();
+    // Check and fix database schema
+    _checkDatabaseSchema();
     _loadBuses();
+  }
+
+  Future<void> _checkDatabaseSchema() async {
+    try {
+      await DatabaseHelper().ensureRouteColumnsExist();
+    } catch (e) {
+      print("Error checking database schema: $e");
+    }
   }
 
   // Load buses from database
@@ -82,21 +104,20 @@ class _AdminBusesState extends State<AdminBuses> {
             const SizedBox(height: 20),
             // Bus list
             Expanded(
-              child:
-                  _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : buses.isEmpty
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : buses.isEmpty
                       ? const Center(child: Text('No buses found'))
                       : RefreshIndicator(
-                        onRefresh: _loadBuses,
-                        child: ListView.builder(
-                          itemCount: buses.length,
-                          itemBuilder: (context, index) {
-                            final bus = buses[index];
-                            return _buildBusCard(bus, index);
-                          },
+                          onRefresh: _loadBuses,
+                          child: ListView.builder(
+                            itemCount: buses.length,
+                            itemBuilder: (context, index) {
+                              final bus = buses[index];
+                              return _buildBusCard(bus, index);
+                            },
+                          ),
                         ),
-                      ),
             ),
           ],
         ),
@@ -146,10 +167,9 @@ class _AdminBusesState extends State<AdminBuses> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color:
-                        bus.busType == 'Premium'
-                            ? Colors.amber[100]
-                            : bus.busType == 'Standard'
+                    color: bus.busType == 'Premium'
+                        ? Colors.amber[100]
+                        : bus.busType == 'Standard'
                             ? Colors.blue[100]
                             : Colors.green[100],
                     borderRadius: BorderRadius.circular(4),
@@ -157,10 +177,9 @@ class _AdminBusesState extends State<AdminBuses> {
                   child: Text(
                     bus.busType,
                     style: TextStyle(
-                      color:
-                          bus.busType == 'Premium'
-                              ? Colors.amber[800]
-                              : bus.busType == 'Standard'
+                      color: bus.busType == 'Premium'
+                          ? Colors.amber[800]
+                          : bus.busType == 'Standard'
                               ? Colors.blue[800]
                               : Colors.green[800],
                       fontWeight: FontWeight.bold,
@@ -168,6 +187,28 @@ class _AdminBusesState extends State<AdminBuses> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 15),
+            // Display route information
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.directions, color: AppTheme.primaryColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Route: ${bus.fromLocation} to ${bus.toLocation}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue[800],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 15),
             Row(
@@ -211,7 +252,7 @@ class _AdminBusesState extends State<AdminBuses> {
                         style: TextStyle(color: Colors.grey),
                       ),
                       Text(
-                        bus.duration,
+                        _calculateDuration(bus.departureTime, bus.arrivalTime),
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -308,279 +349,427 @@ class _AdminBusesState extends State<AdminBuses> {
     final idController = TextEditingController(text: bus?.id ?? '');
     final nameController = TextEditingController(text: bus?.name ?? '');
     final departureTimeController = TextEditingController(
-      text: bus?.departureTime ?? '',
+      text: bus?.departureTime ?? '08:00 AM',
     );
     final arrivalTimeController = TextEditingController(
-      text: bus?.arrivalTime ?? '',
-    );
-    final durationController = TextEditingController(
-      text: bus?.duration ?? '',
+      text: bus?.arrivalTime ?? '10:30 AM',
     );
     final priceController = TextEditingController(
-      text: bus?.price.toString() ?? '',
+      text: bus?.price.toString() ?? '2000',
     );
     final seatsController = TextEditingController(
-      text: bus?.availableSeats.toString() ?? '',
+      text: bus?.availableSeats.toString() ?? '30',
     );
 
+    // Create mutable copies of all values that will be modified in the dialog
     String busType = bus?.busType ?? 'Standard';
-    List<String> features = List<String>.from(bus?.features ?? ['AC']);
+    String fromLocation = bus?.fromLocation ?? 'Kigali';
+    String toLocation = bus?.toLocation ?? 'Butare';
+    
+    // Using separate boolean variables for each feature
+    bool hasAC = bus?.features.contains('AC') ?? true;
+    bool hasWiFi = bus?.features.contains('WiFi') ?? false;
+    bool hasUSB = bus?.features.contains('USB Charging') ?? false;
+    bool hasRefreshments = bus?.features.contains('Refreshments') ?? false;
+    bool hasTV = bus?.features.contains('TV') ?? false;
 
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(bus == null ? 'Add New Bus' : 'Edit Bus'),
-            content: SingleChildScrollView(
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: idController,
-                      decoration: const InputDecoration(labelText: 'Bus ID'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter bus ID';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Bus Name'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter bus name';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      value: busType,
-                      decoration: const InputDecoration(labelText: 'Bus Type'),
-                      items:
-                          ['Economy', 'Standard', 'Premium']
-                              .map(
-                                (type) => DropdownMenuItem(
-                                  value: type,
-                                  child: Text(type),
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text(bus == null ? 'Add New Bus' : 'Edit Bus'),
+              content: Container(
+                width: MediaQuery.of(context).size.width * 0.8,
+                height: MediaQuery.of(context).size.height * 0.8,
+                child: Form(
+                  key: formKey,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextFormField(
+                          controller: idController,
+                          decoration: const InputDecoration(labelText: 'Bus ID'),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter bus ID';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: nameController,
+                          decoration: const InputDecoration(labelText: 'Bus Name'),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter bus name';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          value: busType,
+                          decoration: const InputDecoration(labelText: 'Bus Type'),
+                          items: ['Economy', 'Standard', 'Premium'].map((type) {
+                            return DropdownMenuItem<String>(
+                              value: type,
+                              child: Text(type),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setStateDialog(() {
+                                busType = value;
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        // Route Information
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Route Information',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
                                 ),
-                              )
-                              .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          busType = value;
-                        }
-                      },
+                              ),
+                              const SizedBox(height: 10),
+                              DropdownButtonFormField<String>(
+                                value: fromLocation,
+                                decoration: const InputDecoration(labelText: 'From'),
+                                isExpanded: true,
+                                items: locations.map((location) {
+                                  return DropdownMenuItem<String>(
+                                    value: location,
+                                    child: Text(location),
+                                  );
+                                }).toList(),
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setStateDialog(() {
+                                      fromLocation = value;
+                                    });
+                                  }
+                                },
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please select origin';
+                                  }
+                                  if (value == toLocation) {
+                                    return 'Origin and destination must be different';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 10),
+                              DropdownButtonFormField<String>(
+                                value: toLocation,
+                                decoration: const InputDecoration(labelText: 'To'),
+                                isExpanded: true,
+                                items: locations.map((location) {
+                                  return DropdownMenuItem<String>(
+                                    value: location,
+                                    child: Text(location),
+                                  );
+                                }).toList(),
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setStateDialog(() {
+                                      toLocation = value;
+                                    });
+                                  }
+                                },
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please select destination';
+                                  }
+                                  if (value == fromLocation) {
+                                    return 'Origin and destination must be different';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        TextFormField(
+                          controller: departureTimeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Departure Time (e.g., 08:00 AM)',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter departure time';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: arrivalTimeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Arrival Time (e.g., 10:30 AM)',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter arrival time';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: priceController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'Price (RWF)'),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter price';
+                            }
+                            if (double.tryParse(value) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: seatsController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'Available Seats'),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter available seats';
+                            }
+                            if (int.tryParse(value) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 15),
+                        
+                        // Features section with individual checkboxes
+                        const Text(
+                          'Features',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CheckboxListTile(
+                                title: const Text('AC'),
+                                value: hasAC,
+                                onChanged: (bool? value) {
+                                  setStateDialog(() {
+                                    hasAC = value ?? false;
+                                  });
+                                },
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CheckboxListTile(
+                                title: const Text('WiFi'),
+                                value: hasWiFi,
+                                onChanged: (bool? value) {
+                                  setStateDialog(() {
+                                    hasWiFi = value ?? false;
+                                  });
+                                },
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CheckboxListTile(
+                                title: const Text('USB Charging'),
+                                value: hasUSB,
+                                onChanged: (bool? value) {
+                                  setStateDialog(() {
+                                    hasUSB = value ?? false;
+                                  });
+                                },
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CheckboxListTile(
+                                title: const Text('Refreshments'),
+                                value: hasRefreshments,
+                                onChanged: (bool? value) {
+                                  setStateDialog(() {
+                                    hasRefreshments = value ?? false;
+                                  });
+                                },
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CheckboxListTile(
+                                title: const Text('TV'),
+                                value: hasTV,
+                                onChanged: (bool? value) {
+                                  setStateDialog(() {
+                                    hasTV = value ?? false;
+                                  });
+                                },
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: departureTimeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Departure Time',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter departure time';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: arrivalTimeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Arrival Time',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter arrival time';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: durationController,
-                      decoration: const InputDecoration(labelText: 'Duration'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter duration';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: priceController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Price (RWF)',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter price';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Please enter a valid number';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: seatsController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Available Seats',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter available seats';
-                        }
-                        if (int.tryParse(value) == null) {
-                          return 'Please enter a valid number';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 15),
-                    const Text(
-                      'Features',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    CheckboxListTile(
-                      title: const Text('AC'),
-                      value: features.contains('AC'),
-                      onChanged: (value) {
-                        setState(() {
-                          if (value!) {
-                            features.add('AC');
-                          } else {
-                            features.remove('AC');
-                          }
-                        });
-                      },
-                    ),
-                    CheckboxListTile(
-                      title: const Text('WiFi'),
-                      value: features.contains('WiFi'),
-                      onChanged: (value) {
-                        setState(() {
-                          if (value!) {
-                            features.add('WiFi');
-                          } else {
-                            features.remove('WiFi');
-                          }
-                        });
-                      },
-                    ),
-                    CheckboxListTile(
-                      title: const Text('USB Charging'),
-                      value: features.contains('USB Charging'),
-                      onChanged: (value) {
-                        setState(() {
-                          if (value!) {
-                            features.add('USB Charging');
-                          } else {
-                            features.remove('USB Charging');
-                          }
-                        });
-                      },
-                    ),
-                    CheckboxListTile(
-                      title: const Text('Refreshments'),
-                      value: features.contains('Refreshments'),
-                      onChanged: (value) {
-                        setState(() {
-                          if (value!) {
-                            features.add('Refreshments');
-                          } else {
-                            features.remove('Refreshments');
-                          }
-                        });
-                      },
-                    ),
-                    CheckboxListTile(
-                      title: const Text('TV'),
-                      value: features.contains('TV'),
-                      onChanged: (value) {
-                        setState(() {
-                          if (value!) {
-                            features.add('TV');
-                          } else {
-                            features.remove('TV');
-                          }
-                        });
-                      },
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  if (formKey.currentState!.validate()) {
-                    final newBus = Bus(
-                      id: idController.text,
-                      name: nameController.text,
-                      departureTime: departureTimeController.text,
-                      arrivalTime: arrivalTimeController.text,
-                      duration: durationController.text,
-                      price: double.parse(priceController.text),
-                      availableSeats: int.parse(seatsController.text),
-                      busType: busType,
-                      features: features,
-                    );
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (formKey.currentState!.validate()) {
+                      try {
+                        // Show loading indicator
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) {
+                            return AlertDialog(
+                              content: Row(
+                                children: [
+                                  CircularProgressIndicator(),
+                                  SizedBox(width: 20),
+                                  Text("Saving..."),
+                                ],
+                              ),
+                            );
+                          },
+                        );
 
-                    try {
-                      if (bus == null) {
-                        // Add new bus to database
-                        await DatabaseHelper().insertBus(newBus);
-                      } else {
-                        // Update existing bus in database
-                        await DatabaseHelper().updateBus(newBus);
-                      }
+                        // Create features list from individual checkboxes
+                        List<String> features = [];
+                        if (hasAC) features.add('AC');
+                        if (hasWiFi) features.add('WiFi');
+                        if (hasUSB) features.add('USB Charging');
+                        if (hasRefreshments) features.add('Refreshments');
+                        if (hasTV) features.add('TV');
 
-                      // Reload buses from database
-                      _loadBuses();
+                        // Calculate duration
+                        String duration = _calculateDuration(
+                          departureTimeController.text, 
+                          arrivalTimeController.text
+                        );
 
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            bus == null
-                                ? 'Bus added successfully'
-                                : 'Bus updated successfully',
+                        final newBus = Bus(
+                          id: idController.text,
+                          name: nameController.text,
+                          departureTime: departureTimeController.text,
+                          arrivalTime: arrivalTimeController.text,
+                          duration: duration,
+                          price: double.parse(priceController.text),
+                          availableSeats: int.parse(seatsController.text),
+                          busType: busType,
+                          features: features,
+                          fromLocation: fromLocation,
+                          toLocation: toLocation,
+                        );
+
+                        // Ensure database has correct schema
+                        await DatabaseHelper().ensureRouteColumnsExist();
+
+                        if (bus == null) {
+                          // Add new bus
+                          await DatabaseHelper().insertBus(newBus);
+                        } else {
+                          // Update existing bus
+                          await DatabaseHelper().updateBus(newBus);
+                        }
+
+                        // Dismiss loading dialog
+                        Navigator.pop(context);
+                        
+                        // Dismiss edit dialog
+                        Navigator.pop(context);
+                        
+                        // Refresh bus list
+                        _loadBuses();
+                        
+                        // Show success message
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              bus == null ? 'Bus added successfully' : 'Bus updated successfully'
+                            ),
+                            backgroundColor: Colors.green,
                           ),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
+                        );
+                      } catch (e) {
+                        // Dismiss loading dialog if open
+                        if (Navigator.canPop(context)) {
+                          Navigator.pop(context);
+                        }
+                        
+                        // Show error message
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
                     }
-                  }
-                },
-                child: Text(bus == null ? 'Add' : 'Update'),
-              ),
-            ],
-          ),
+                  },
+                  child: Text(bus == null ? 'Add' : 'Update'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -589,49 +778,106 @@ class _AdminBusesState extends State<AdminBuses> {
 
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Delete Bus'),
-            content: const Text(
-              'Are you sure you want to delete this bus? This action cannot be undone.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  try {
-                    // Delete bus from database
-                    await DatabaseHelper().deleteBus(bus.id);
-
-                    // Reload buses from database
-                    _loadBuses();
-
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Bus deleted successfully'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Delete'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Bus'),
+        content: const Text(
+          'Are you sure you want to delete this bus? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text('Cancel'),
           ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                // Delete bus from database
+                await DatabaseHelper().deleteBus(bus.id);
+
+                // Reload buses from database
+                _loadBuses();
+
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Bus deleted successfully'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
+  }
+
+  // Helper method to calculate duration based on departure and arrival times
+  String _calculateDuration(String departureTime, String arrivalTime) {
+    try {
+      // Parse the times
+      DateTime departure = _parseTimeString(departureTime);
+      DateTime arrival = _parseTimeString(arrivalTime);
+
+      // If arrival appears to be before departure, assume it's the next day
+      if (arrival.isBefore(departure)) {
+        arrival = arrival.add(const Duration(days: 1));
+      }
+
+      // Calculate the difference
+      Duration difference = arrival.difference(departure);
+
+      // Format as "Xh Ym"
+      int hours = difference.inHours;
+      int minutes = difference.inMinutes.remainder(60);
+
+      if (hours > 0 && minutes > 0) {
+        return "${hours}h ${minutes}m";
+      } else if (hours > 0) {
+        return "${hours}h";
+      } else {
+        return "${minutes}m";
+      }
+    } catch (e) {
+      print("Error calculating duration: $e");
+      return "Unknown";
+    }
+  }
+
+  // Helper method to parse time strings
+  DateTime _parseTimeString(String timeStr) {
+    try {
+      // Parse format like "08:00 AM" or "12:00 PM"
+      final parts = timeStr.split(' ');
+      final timeParts = parts[0].split(':');
+      int hour = int.parse(timeParts[0]);
+      final int minute = int.parse(timeParts[1]);
+
+      // Convert to 24-hour format
+      if (parts.length > 1) {
+        if (parts[1] == 'PM' && hour != 12) {
+          hour += 12;
+        } else if (parts[1] == 'AM' && hour == 12) {
+          hour = 0;
+        }
+      }
+
+      return DateTime(2023, 1, 1, hour, minute);
+    } catch (e) {
+      print("Error parsing time string: $e");
+      // Return current time as fallback
+      return DateTime.now();
+    }
   }
 }

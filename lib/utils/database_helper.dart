@@ -27,8 +27,8 @@ class DatabaseHelper {
     String path = join(documentsDirectory.path, 'rwanda_bus.db');
 
     return await openDatabase(
-      path, 
-      version: 2, 
+      path,
+      version: 3, // Increased version for schema change
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -48,7 +48,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // Create buses table
+    // Create buses table with route information
     await db.execute('''
       CREATE TABLE buses(
         id TEXT PRIMARY KEY,
@@ -59,7 +59,9 @@ class DatabaseHelper {
         price REAL NOT NULL,
         available_seats INTEGER NOT NULL,
         bus_type TEXT NOT NULL,
-        features TEXT NOT NULL
+        features TEXT NOT NULL,
+        from_location TEXT NOT NULL,
+        to_location TEXT NOT NULL
       )
     ''');
 
@@ -84,7 +86,7 @@ class DatabaseHelper {
         FOREIGN KEY(bus_id) REFERENCES buses(id)
       )
     ''');
-    
+
     // Create notifications table
     await db.execute('''
       CREATE TABLE notifications(
@@ -103,7 +105,7 @@ class DatabaseHelper {
     // Insert some initial data
     await _insertInitialData(db);
   }
-  
+
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       // Add notifications table if upgrading from version 1
@@ -120,32 +122,265 @@ class DatabaseHelper {
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
       ''');
-      
+
       // Add notification_sent column to bookings table if it doesn't exist
       await addNotificationSentColumnToBookings(db);
     }
+
+    if (oldVersion < 3) {
+      // Add route information columns to buses table if upgrading to version 3
+      try {
+        await db.execute(
+          "ALTER TABLE buses ADD COLUMN from_location TEXT DEFAULT 'Kigali'",
+        );
+        await db.execute(
+          "ALTER TABLE buses ADD COLUMN to_location TEXT DEFAULT 'Butare'",
+        );
+
+        // Update existing bus records with default route values
+        await db.update('buses', {
+          'from_location': 'Kigali',
+          'to_location': 'Butare',
+        });
+
+        print("Added route information columns to buses table");
+      } catch (e) {
+        print("Error adding route information columns: $e");
+      }
+    }
   }
-  
+
   Future<void> addNotificationSentColumnToBookings(Database db) async {
     try {
-      await db.execute("ALTER TABLE bookings ADD COLUMN notification_sent INTEGER DEFAULT 0");
+      await db.execute(
+        "ALTER TABLE bookings ADD COLUMN notification_sent INTEGER DEFAULT 0",
+      );
     } catch (e) {
       // Column might already exist
       print("Error adding notification_sent column: $e");
     }
   }
+  // Add this method to the DatabaseHelper class in lib/utils/database_helper.dart
+
+  Future<void> ensureRouteColumnsExistV2() async {
+    final db = await database;
+
+    try {
+      // Check if columns already exist
+      var tableInfo = await db.rawQuery("PRAGMA table_info(buses)");
+      bool hasFromColumn = tableInfo.any(
+        (column) => column['name'] == 'from_location',
+      );
+      bool hasToColumn = tableInfo.any(
+        (column) => column['name'] == 'to_location',
+      );
+
+      if (!hasFromColumn || !hasToColumn) {
+        print("Route columns missing - adding them now");
+
+        if (!hasFromColumn) {
+          await db.execute(
+            "ALTER TABLE buses ADD COLUMN from_location TEXT DEFAULT 'Kigali'",
+          );
+          print("Added from_location column to buses table");
+        }
+
+        if (!hasToColumn) {
+          await db.execute(
+            "ALTER TABLE buses ADD COLUMN to_location TEXT DEFAULT 'Butare'",
+          );
+          print("Added to_location column to buses table");
+        }
+
+        // Update existing buses with default values
+        await db.update('buses', {
+          'from_location': 'Kigali',
+          'to_location': 'Butare',
+        }, where: "from_location IS NULL OR to_location IS NULL");
+
+        print("Updated existing bus records with default route values");
+      }
+    } catch (e) {
+      print("Error ensuring route columns: $e");
+      // Try recreating the table if altering fails
+      try {
+        // Get current buses
+        List<Map<String, dynamic>> busMaps = await db.query('buses');
+
+        // Create new buses table with all columns
+        await db.execute("DROP TABLE IF EXISTS buses_new");
+        await db.execute('''
+        CREATE TABLE buses_new(
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          departure_time TEXT NOT NULL,
+          arrival_time TEXT NOT NULL,
+          duration TEXT NOT NULL,
+          price REAL NOT NULL,
+          available_seats INTEGER NOT NULL,
+          bus_type TEXT NOT NULL,
+          features TEXT NOT NULL,
+          // Continuing from where the code was cut off in the ensureRouteColumnsExist() method
+
+          from_location TEXT NOT NULL DEFAULT 'Kigali',
+          to_location TEXT NOT NULL DEFAULT 'Butare'
+        )
+      ''');
+
+        // Copy data to new table
+        for (var busMap in busMaps) {
+          // Make sure all required columns are present
+          Map<String, dynamic> newBusMap = {
+            'id': busMap['id'],
+            'name': busMap['name'],
+            'departure_time': busMap['departure_time'],
+            'arrival_time': busMap['arrival_time'],
+            'duration': busMap['duration'],
+            'price': busMap['price'],
+            'available_seats': busMap['available_seats'],
+            'bus_type': busMap['bus_type'],
+            'features': busMap['features'],
+            'from_location': 'Kigali',
+            'to_location': 'Butare',
+          };
+
+          await db.insert('buses_new', newBusMap);
+        }
+
+        // Replace old table with new one
+        await db.execute("DROP TABLE buses");
+        await db.execute("ALTER TABLE buses_new RENAME TO buses");
+
+        print("Recreated buses table with route columns");
+      } catch (e) {
+        print("Error recreating buses table: $e");
+        // Last resort: force database recreation
+        try {
+          print(
+            "Attempting to force database version update to trigger recreation",
+          );
+          await db.rawQuery("PRAGMA user_version = 3");
+        } catch (e) {
+          print("Failed to update database version: $e");
+        }
+      }
+    }
+  }
+
+  Future<void> ensureRouteColumnsExist() async {
+    final db = await database;
+
+    try {
+      // Check if columns already exist
+      var tableInfo = await db.rawQuery("PRAGMA table_info(buses)");
+      bool hasFromColumn = tableInfo.any(
+        (column) => column['name'] == 'from_location',
+      );
+      bool hasToColumn = tableInfo.any(
+        (column) => column['name'] == 'to_location',
+      );
+
+      if (!hasFromColumn || !hasToColumn) {
+        print("Route columns missing - adding them now");
+
+        if (!hasFromColumn) {
+          await db.execute(
+            "ALTER TABLE buses ADD COLUMN from_location TEXT DEFAULT 'Kigali'",
+          );
+          print("Added from_location column to buses table");
+        }
+
+        if (!hasToColumn) {
+          await db.execute(
+            "ALTER TABLE buses ADD COLUMN to_location TEXT DEFAULT 'Butare'",
+          );
+          print("Added to_location column to buses table");
+        }
+
+        // Update existing buses with default values
+        await db.update('buses', {
+          'from_location': 'Kigali',
+          'to_location': 'Butare',
+        }, where: "from_location IS NULL OR to_location IS NULL");
+
+        print("Updated existing bus records with default route values");
+      }
+    } catch (e) {
+      print("Error ensuring route columns: $e");
+      // Try recreating the table if altering fails
+      try {
+        // Get current buses
+        List<Map<String, dynamic>> busMaps = await db.query('buses');
+
+        // Create new buses table with all columns
+        await db.execute("DROP TABLE IF EXISTS buses_new");
+        await db.execute('''
+        CREATE TABLE buses_new(
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          departure_time TEXT NOT NULL,
+          arrival_time TEXT NOT NULL,
+          duration TEXT NOT NULL,
+          price REAL NOT NULL,
+          available_seats INTEGER NOT NULL,
+          bus_type TEXT NOT NULL,
+          features TEXT NOT NULL,
+          from_location TEXT NOT NULL DEFAULT 'Kigali',
+          to_location TEXT NOT NULL DEFAULT 'Butare'
+        )
+      ''');
+
+        // Copy data to new table
+        for (var busMap in busMaps) {
+          // Make sure all required columns are present
+          Map<String, dynamic> newBusMap = {
+            'id': busMap['id'],
+            'name': busMap['name'],
+            'departure_time': busMap['departure_time'],
+            'arrival_time': busMap['arrival_time'],
+            'duration': busMap['duration'],
+            'price': busMap['price'],
+            'available_seats': busMap['available_seats'],
+            'bus_type': busMap['bus_type'],
+            'features': busMap['features'],
+            'from_location': 'Kigali',
+            'to_location': 'Butare',
+          };
+
+          await db.insert('buses_new', newBusMap);
+        }
+
+        // Replace old table with new one
+        await db.execute("DROP TABLE buses");
+        await db.execute("ALTER TABLE buses_new RENAME TO buses");
+
+        print("Recreated buses table with route columns");
+      } catch (e) {
+        print("Error recreating buses table: $e");
+        // Last resort: force database recreation
+        try {
+          print(
+            "Attempting to force database version update to trigger recreation",
+          );
+          await db.rawQuery("PRAGMA user_version = 3");
+        } catch (e) {
+          print("Failed to update database version: $e");
+        }
+      }
+    }
+  }
 
   Future<void> _insertInitialData(Database db) async {
-    // Insert admin user
+    // Insert admin user with a better name than "Admin User"
     await db.insert('users', {
-      'name': 'Admin User',
+      'name': 'System Administrator',
       'email': 'admin@rwandabus.com',
       'password': 'admin123', // In a real app, this would be hashed
       'phone': '+250 789 123 456',
       'gender': 'Male',
     });
 
-    // Insert some sample buses
+    // Insert some sample buses with route information
     await db.insert('buses', {
       'id': 'BUS001',
       'name': 'Rwanda Express',
@@ -156,6 +391,8 @@ class DatabaseHelper {
       'available_seats': 32,
       'bus_type': 'Standard',
       'features': 'AC,WiFi,USB Charging',
+      'from_location': 'Kigali',
+      'to_location': 'Ruhengeri',
     });
 
     await db.insert('buses', {
@@ -168,6 +405,8 @@ class DatabaseHelper {
       'available_seats': 28,
       'bus_type': 'Premium',
       'features': 'AC,WiFi,USB Charging,Refreshments',
+      'from_location': 'Kigali',
+      'to_location': 'Butare',
     });
 
     await db.insert('buses', {
@@ -180,7 +419,124 @@ class DatabaseHelper {
       'available_seats': 35,
       'bus_type': 'Economy',
       'features': 'AC',
+      'from_location': 'Kigali',
+      'to_location': 'Gisenyi',
     });
+
+    // Add some buses for return journeys
+    await db.insert('buses', {
+      'id': 'BUS004',
+      'name': 'Ruhengeri Express',
+      'departure_time': '02:00 PM',
+      'arrival_time': '04:30 PM',
+      'duration': '2h 30m',
+      'price': 5000,
+      'available_seats': 30,
+      'bus_type': 'Standard',
+      'features': 'AC,WiFi,USB Charging',
+      'from_location': 'Ruhengeri',
+      'to_location': 'Kigali',
+    });
+
+    await db.insert('buses', {
+      'id': 'BUS005',
+      'name': 'Huye Traveler',
+      'departure_time': '01:30 PM',
+      'arrival_time': '04:00 PM',
+      'duration': '2h 30m',
+      'price': 5500,
+      'available_seats': 26,
+      'bus_type': 'Premium',
+      'features': 'AC,WiFi,USB Charging,Refreshments',
+      'from_location': 'Butare',
+      'to_location': 'Kigali',
+    });
+  }
+
+  // Method to replace "Admin User" in all notifications
+  Future<void> replaceAdminUserInAllNotifications() async {
+    final db = await database;
+
+    // First get a list of all users
+    final users = await getAllUsers();
+    final realUsers = users.where((user) => user.name != 'Admin User').toList();
+
+    // If no real users, we need to at least fix the admin user name
+    if (realUsers.isEmpty) {
+      print("No real users found to replace 'Admin User'");
+
+      // Update admin user name to prevent future issues
+      await db.update(
+        'users',
+        {'name': 'System Administrator'},
+        where: 'name = ? AND email = ?',
+        whereArgs: ['Admin User', 'admin@rwandabus.com'],
+      );
+
+      // Use the updated name in notifications
+      final count = await db.rawUpdate(
+        "UPDATE notifications SET message = REPLACE(message, 'Admin User', 'System Administrator')",
+      );
+
+      print(
+        "Updated $count notifications to use 'System Administrator' instead of 'Admin User'",
+      );
+      return;
+    }
+
+    // Get a valid user name to use for replacements
+    final replacementName = realUsers.first.name;
+
+    // Replace ALL instances of "Admin User" with the real name
+    try {
+      final count = await db.rawUpdate(
+        "UPDATE notifications SET message = REPLACE(message, 'Admin User', ?)",
+        [replacementName],
+      );
+
+      print(
+        "Updated $count notifications to use '$replacementName' instead of 'Admin User'",
+      );
+    } catch (e) {
+      print("Error replacing Admin User in notifications: $e");
+    }
+
+    // Also update the admin user's name to prevent future occurrences
+    try {
+      await db.update(
+        'users',
+        {'name': 'System Administrator'},
+        where: 'name = ? AND email = ?',
+        whereArgs: ['Admin User', 'admin@rwandabus.com'],
+      );
+      print("Updated admin user name to 'System Administrator'");
+    } catch (e) {
+      print("Error updating admin user name: $e");
+    }
+  }
+
+  // Method to update notification message
+  Future<int> updateNotificationMessage(
+    int notificationId,
+    String newMessage,
+  ) async {
+    final db = await database;
+    return await db.update(
+      'notifications',
+      {'message': newMessage},
+      where: 'id = ?',
+      whereArgs: [notificationId],
+    );
+  }
+
+  // Method to clear notifications containing "Admin User"
+  Future<int> clearAdminUserNotifications() async {
+    final db = await database;
+    return await db.delete(
+      'notifications',
+      where: 'message LIKE ?',
+      whereArgs: ['%Admin User%'],
+    );
   }
 
   // User CRUD operations
@@ -243,7 +599,7 @@ class DatabaseHelper {
     });
   }
 
-  // Bus CRUD operations
+  // Bus CRUD operations with route information
   Future<int> insertBus(Bus bus) async {
     Database db = await database;
     return await db.insert('buses', {
@@ -256,6 +612,8 @@ class DatabaseHelper {
       'available_seats': bus.availableSeats,
       'bus_type': bus.busType,
       'features': bus.features.join(','),
+      'from_location': bus.fromLocation,
+      'to_location': bus.toLocation,
     });
   }
 
@@ -272,6 +630,8 @@ class DatabaseHelper {
         'available_seats': bus.availableSeats,
         'bus_type': bus.busType,
         'features': bus.features.join(','),
+        'from_location': bus.fromLocation,
+        'to_location': bus.toLocation,
       },
       where: 'id = ?',
       whereArgs: [bus.id],
@@ -302,6 +662,8 @@ class DatabaseHelper {
         availableSeats: maps.first['available_seats'],
         busType: maps.first['bus_type'],
         features: maps.first['features'].split(','),
+        fromLocation: maps.first['from_location'] ?? 'Kigali',
+        toLocation: maps.first['to_location'] ?? 'Butare',
       );
     }
     return null;
@@ -321,6 +683,33 @@ class DatabaseHelper {
         availableSeats: maps[i]['available_seats'],
         busType: maps[i]['bus_type'],
         features: maps[i]['features'].split(','),
+        fromLocation: maps[i]['from_location'] ?? 'Kigali',
+        toLocation: maps[i]['to_location'] ?? 'Butare',
+      );
+    });
+  }
+
+  // New method to get buses by route
+  Future<List<Bus>> getBusesByRoute(String from, String to) async {
+    Database db = await database;
+    List<Map<String, dynamic>> maps = await db.query(
+      'buses',
+      where: 'from_location = ? AND to_location = ?',
+      whereArgs: [from, to],
+    );
+    return List.generate(maps.length, (i) {
+      return Bus(
+        id: maps[i]['id'],
+        name: maps[i]['name'],
+        departureTime: maps[i]['departure_time'],
+        arrivalTime: maps[i]['arrival_time'],
+        duration: maps[i]['duration'],
+        price: maps[i]['price'],
+        availableSeats: maps[i]['available_seats'],
+        busType: maps[i]['bus_type'],
+        features: maps[i]['features'].split(','),
+        fromLocation: maps[i]['from_location'] ?? from,
+        toLocation: maps[i]['to_location'] ?? to,
       );
     });
   }
@@ -339,7 +728,7 @@ class DatabaseHelper {
 
     return await db.insert('bookings', bookingMap);
   }
-  
+
   Future<User?> getUserById(int userId) async {
     Database db = await database;
     List<Map<String, dynamic>> maps = await db.query(
@@ -394,12 +783,25 @@ class DatabaseHelper {
     });
   }
 
+  // Get bookings for a specific route
+  Future<List<Booking>> getBookingsByRoute(String from, String to) async {
+    Database db = await database;
+    List<Map<String, dynamic>> maps = await db.query(
+      'bookings',
+      where: 'from_location = ? AND to_location = ?',
+      whereArgs: [from, to],
+    );
+    return List.generate(maps.length, (i) {
+      return Booking.fromMap(maps[i]);
+    });
+  }
+
   // Notification operations
   Future<int> insertNotification(Map<String, dynamic> notification) async {
     Database db = await database;
     return await db.insert('notifications', notification);
   }
-  
+
   Future<List<Map<String, dynamic>>> getNotifications({
     String? recipient,
     int? userId,
@@ -407,7 +809,7 @@ class DatabaseHelper {
     Database db = await database;
     String? whereClause;
     List<dynamic>? whereArgs;
-    
+
     if (recipient != null && userId != null) {
       whereClause = 'recipient = ? AND userId = ?';
       whereArgs = [recipient, userId];
@@ -418,7 +820,7 @@ class DatabaseHelper {
       whereClause = 'userId = ?';
       whereArgs = [userId];
     }
-    
+
     return await db.query(
       'notifications',
       where: whereClause,
@@ -426,7 +828,7 @@ class DatabaseHelper {
       orderBy: 'time DESC',
     );
   }
-  
+
   Future<int> markNotificationAsRead(int id) async {
     Database db = await database;
     return await db.update(
@@ -436,12 +838,15 @@ class DatabaseHelper {
       whereArgs: [id],
     );
   }
-  
-  Future<int> markAllNotificationsAsRead({String? recipient, int? userId}) async {
+
+  Future<int> markAllNotificationsAsRead({
+    String? recipient,
+    int? userId,
+  }) async {
     Database db = await database;
     String? whereClause;
     List<dynamic>? whereArgs;
-    
+
     if (recipient != null && userId != null) {
       whereClause = 'recipient = ? AND userId = ?';
       whereArgs = [recipient, userId];
@@ -452,7 +857,7 @@ class DatabaseHelper {
       whereClause = 'userId = ?';
       whereArgs = [userId];
     }
-    
+
     return await db.update(
       'notifications',
       {'isRead': 1},
@@ -460,21 +865,20 @@ class DatabaseHelper {
       whereArgs: whereArgs,
     );
   }
-  
+
   Future<int> deleteNotification(int id) async {
     Database db = await database;
-    return await db.delete(
-      'notifications',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('notifications', where: 'id = ?', whereArgs: [id]);
   }
-  
-  Future<int> getUnreadNotificationsCount({String? recipient, int? userId}) async {
+
+  Future<int> getUnreadNotificationsCount({
+    String? recipient,
+    int? userId,
+  }) async {
     Database db = await database;
     String? whereClause;
     List<dynamic>? whereArgs;
-    
+
     if (recipient != null && userId != null) {
       whereClause = 'recipient = ? AND userId = ? AND isRead = ?';
       whereArgs = [recipient, userId, 0];
@@ -488,16 +892,19 @@ class DatabaseHelper {
       whereClause = 'isRead = ?';
       whereArgs = [0];
     }
-    
+
     List<Map<String, dynamic>> result = await db.rawQuery(
       'SELECT COUNT(*) as count FROM notifications WHERE $whereClause',
       whereArgs,
     );
     return Sqflite.firstIntValue(result) ?? 0;
   }
-  
+
   // Update booking notification status
-  Future<int> updateBookingNotificationStatus(String bookingId, bool sent) async {
+  Future<int> updateBookingNotificationStatus(
+    String bookingId,
+    bool sent,
+  ) async {
     Database db = await database;
     return await db.update(
       'bookings',
@@ -506,15 +913,17 @@ class DatabaseHelper {
       whereArgs: [bookingId],
     );
   }
-  
+
   // Add notification_sent column to bookings table if it doesn't exist
   Future<void> addNotificationSentColumnIfNeeded() async {
     final db = await database;
-    
+
     // Check if the notification_sent column exists in the bookings table
     var tableInfo = await db.rawQuery("PRAGMA table_info(bookings)");
-    bool hasColumn = tableInfo.any((column) => column['name'] == 'notification_sent');
-    
+    bool hasColumn = tableInfo.any(
+      (column) => column['name'] == 'notification_sent',
+    );
+
     if (!hasColumn) {
       await addNotificationSentColumnToBookings(db);
     }
@@ -552,6 +961,16 @@ class DatabaseHelper {
     return result.first['total'] ?? 0.0;
   }
 
+  // Get revenue by route
+  Future<double> getRevenueByRoute(String from, String to) async {
+    Database db = await database;
+    List<Map<String, dynamic>> result = await db.rawQuery(
+      'SELECT SUM(total_amount) as total FROM bookings WHERE payment_status = ? AND from_location = ? AND to_location = ?',
+      ['Confirmed', from, to],
+    );
+    return result.first['total'] ?? 0.0;
+  }
+
   // Get bookings by date
   Future<List<Booking>> getBookingsByDate(String date) async {
     Database db = await database;
@@ -565,6 +984,23 @@ class DatabaseHelper {
     });
   }
 
+  // Get available routes (distinct from-to combinations)
+  Future<List<Map<String, String>>> getAvailableRoutes() async {
+    Database db = await database;
+    List<Map<String, dynamic>> results = await db.rawQuery(
+      'SELECT DISTINCT from_location, to_location FROM buses',
+    );
+
+    return results
+        .map(
+          (map) => {
+            'from': map['from_location'] as String,
+            'to': map['to_location'] as String,
+          },
+        )
+        .toList();
+  }
+
   // Delete all data (for testing purposes)
   Future<void> deleteAllData() async {
     Database db = await database;
@@ -572,5 +1008,59 @@ class DatabaseHelper {
     await db.delete('buses');
     await db.delete('notifications');
     await db.delete('users');
+  }
+  // Add this method to DatabaseHelper class
+
+  // Get all unique locations from buses table
+  Future<List<String>> getAllUniqueLocations() async {
+    Database db = await database;
+    
+    // Query distinct from_location values
+    List<Map<String, dynamic>> fromResults = await db.rawQuery(
+      'SELECT DISTINCT from_location FROM buses WHERE from_location IS NOT NULL'
+    );
+    
+    // Query distinct to_location values
+    List<Map<String, dynamic>> toResults = await db.rawQuery(
+      'SELECT DISTINCT to_location FROM buses WHERE to_location IS NOT NULL'
+    );
+    
+    // Combine the results and remove duplicates
+    Set<String> uniqueLocations = {};
+    
+    for (var result in fromResults) {
+      final location = result['from_location'] as String;
+      if (location.isNotEmpty) {
+        uniqueLocations.add(location);
+      }
+    }
+    
+    for (var result in toResults) {
+      final location = result['to_location'] as String;
+      if (location.isNotEmpty) {
+        uniqueLocations.add(location);
+      }
+    }
+    
+    // Convert to list and sort alphabetically
+    List<String> locationList = uniqueLocations.toList()..sort();
+    
+    // If list is empty, return default locations
+    if (locationList.isEmpty) {
+      return [
+        'Kigali',
+        'Butare',
+        'Gisenyi',
+        'Ruhengeri',
+        'Cyangugu',
+        'Kibungo',
+        'Gitarama',
+        'Byumba',
+        'Huye',
+        'Musanze',
+      ];
+    }
+    
+    return locationList;
   }
 }

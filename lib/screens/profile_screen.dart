@@ -1,6 +1,7 @@
 // lib/screens/profile_screen.dart
 import 'package:flutter/material.dart';
 import 'package:tickiting/screens/auth/login_screen.dart';
+import 'package:tickiting/screens/welcome_screen.dart'; // Ensure WelcomeScreen is imported
 import 'package:tickiting/utils/theme.dart';
 import 'package:tickiting/utils/database_helper.dart';
 import 'package:tickiting/models/user.dart';
@@ -192,10 +193,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   await prefs.remove('current_user_id');
 
                   if (mounted) {
+                    // Navigate to WelcomeScreen instead of LoginScreen
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const LoginScreen(),
+                        builder: (context) => const WelcomeScreen(),
                       ),
                       (route) => false,
                     );

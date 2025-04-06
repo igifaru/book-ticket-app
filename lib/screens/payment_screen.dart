@@ -128,15 +128,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
         id: bookingId,
         userId: 1, // In a real app, this would be the current user's ID
         busId: widget.bus.id,
-        fromLocation: widget.from,
-        toLocation: widget.to,
+        fromLocation: widget.bus.fromLocation, // Use bus's fromLocation
+        toLocation: widget.bus.toLocation, // Use bus's toLocation
         travelDate: '${widget.date.day}/${widget.date.month}/${widget.date.year}',
         passengers: widget.passengers,
         seatNumbers: seatNumbers.join(','),
         totalAmount: totalAmount,
         paymentMethod: _paymentMethod,
-        paymentStatus: 'Pending', // Changed from 'Confirmed' to 'Pending'
-        bookingStatus: 'Pending', // Changed from 'Confirmed' to 'Pending'
+        paymentStatus: 'Pending',
+        bookingStatus: 'Pending',
       );
       
       // Save booking to database
@@ -153,6 +153,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         availableSeats: widget.bus.availableSeats - widget.passengers,
         busType: widget.bus.busType,
         features: widget.bus.features,
+        fromLocation: widget.bus.fromLocation, // Include route information
+        toLocation: widget.bus.toLocation, // Include route information
       );
       
       await DatabaseHelper().updateBus(updatedBus);
@@ -168,8 +170,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
           builder: (context) => TicketScreen(
             isNewTicket: true,
             bus: updatedBus,
-            from: widget.from,
-            to: widget.to,
+            from: updatedBus.fromLocation, // Use bus's fromLocation
+            to: updatedBus.toLocation, // Use bus's toLocation
             date: widget.date,
             passengers: widget.passengers,
             seatNumbers: seatNumbers,
@@ -257,7 +259,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ),
                   const SizedBox(height: 15),
                   _buildSummaryRow('Bus', widget.bus.name),
-                  _buildSummaryRow('Route', '${widget.from} to ${widget.to}'),
+                  _buildSummaryRow('Route', '${widget.bus.fromLocation} to ${widget.bus.toLocation}'),
                   _buildSummaryRow('Date', '${widget.date.day}/${widget.date.month}/${widget.date.year}'),
                   _buildSummaryRow('Time', widget.bus.departureTime),
                   _buildSummaryRow('Passengers', '${widget.passengers}'),

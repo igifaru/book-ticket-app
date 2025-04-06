@@ -26,7 +26,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   int _unreadCount = 0;
   final NotificationService _notificationService = NotificationService();
   final DatabaseHelper _databaseHelper = DatabaseHelper();
-  
+
   // Dashboard statistics
   int _totalBuses = 0;
   int _activeRoutes = 0;
@@ -46,7 +46,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     const AdminUsers(),
     const AdminSettings(),
   ];
-  
+
   // Navigation method to go to payments screen
   void _navigateToPayments() {
     setState(() {
@@ -68,10 +68,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
         _loadUnreadCount();
       }
     });
-    
+
     // Load dashboard data
     _loadDashboardData();
-    
+
     // Set up periodic refresh
     Timer.periodic(const Duration(minutes: 5), (timer) {
       if (mounted) {
@@ -79,33 +79,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
       }
     });
   }
-  
+
   // Load dashboard statistics
   Future<void> _loadDashboardData() async {
     try {
       // Get total buses
       final buses = await _databaseHelper.getAllBuses();
-      
+
       // Get total users
       final users = await _databaseHelper.getAllUsers();
-      
+
       // Get today's bookings
       final allBookings = await _databaseHelper.getAllBookings();
       final now = DateTime.now();
       final todayStart = DateTime(now.year, now.month, now.day);
-      
-      final todayBookings = allBookings.where((booking) {
-        if (booking.createdAt == null) return false;
-        final bookingDate = DateTime.parse(booking.createdAt!);
-        return bookingDate.isAfter(todayStart);
-      }).toList();
-      
+
+      final todayBookings =
+          allBookings.where((booking) {
+            if (booking.createdAt == null) return false;
+            final bookingDate = DateTime.parse(booking.createdAt!);
+            return bookingDate.isAfter(todayStart);
+          }).toList();
+
       // Get total revenue
       final revenue = await _databaseHelper.getTotalRevenue();
-      
+
       // Get recent bookings for display
-      final recentBookings = await _processRecentBookings(allBookings.take(5).toList());
-      
+      final recentBookings = await _processRecentBookings(
+        allBookings.take(5).toList(),
+      );
+
       // Update state
       if (mounted) {
         setState(() {
@@ -121,7 +124,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       print('Error loading dashboard data: $e');
     }
   }
-  
+
   // Count active routes based on unique origin-destination pairs
   int _countActiveRoutes(List<dynamic> buses) {
     final Set<String> routes = {};
@@ -131,14 +134,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
     return routes.length;
   }
-  
+
   // Process booking data to include user names
-  Future<List<Map<String, dynamic>>> _processRecentBookings(List<dynamic> bookings) async {
+  Future<List<Map<String, dynamic>>> _processRecentBookings(
+    List<dynamic> bookings,
+  ) async {
     List<Map<String, dynamic>> result = [];
-    
+
     for (var booking in bookings) {
       final user = await _databaseHelper.getUserById(booking.userId);
-      
+
       result.add({
         'id': booking.id,
         'name': user?.name ?? 'Unknown User',
@@ -148,14 +153,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
         'status': booking.bookingStatus,
       });
     }
-    
+
     return result;
   }
-  
+
   // Format booking time for display
   String _formatBookingTime(String? dateTimeStr) {
     if (dateTimeStr == null) return 'Unknown';
-    
+
     try {
       final dateTime = DateTime.parse(dateTimeStr);
       return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
@@ -452,7 +457,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       return 'Just now';
     }
   }
-  
+
   // Export dashboard data to CSV
   Future<void> _exportDashboardData() async {
     try {
@@ -460,29 +465,30 @@ class _AdminDashboardState extends State<AdminDashboard> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Dialog(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(width: 20),
-                Text('Exporting dashboard data...'),
-              ],
+        builder:
+            (context) => const Dialog(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(width: 20),
+                    Text('Exporting dashboard data...'),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
       );
-      
+
       // Prepare the CSV data
       List<List<dynamic>> csvData = [];
-      
+
       // Add headers and summary data
       csvData.add(['Rwanda Bus Admin Dashboard Summary']);
       csvData.add(['Generated on', DateTime.now().toString()]);
       csvData.add(['']);
-      
+
       csvData.add(['Summary Statistics']);
       csvData.add(['Total Buses', _totalBuses]);
       csvData.add(['Active Routes', _activeRoutes]);
@@ -490,11 +496,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
       csvData.add(['Bookings Today', _bookingsToday]);
       csvData.add(['Total Revenue', '$_totalRevenue RWF']);
       csvData.add(['']);
-      
+
       // Recent bookings
       csvData.add(['Recent Bookings']);
       csvData.add(['ID', 'Customer', 'Route', 'Time', 'Amount', 'Status']);
-      
+
       for (var booking in _recentBookings) {
         csvData.add([
           booking['id'],
@@ -505,29 +511,30 @@ class _AdminDashboardState extends State<AdminDashboard> {
           booking['status'],
         ]);
       }
-      
+
       // Convert to CSV
       String csv = const ListToCsvConverter().convert(csvData);
-      
+
       // Get documents directory and create file
       final directory = await getApplicationDocumentsDirectory();
-      final fileName = 'dashboard_summary_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final fileName =
+          'dashboard_summary_${DateTime.now().millisecondsSinceEpoch}.csv';
       final filePath = '${directory.path}/$fileName';
-      
+
       // Write the file
       final File file = File(filePath);
       await file.writeAsString(csv);
-      
+
       // Close loading dialog
       if (mounted) Navigator.pop(context);
-      
+
       // Share the file
       await Share.shareXFiles(
         [XFile(filePath)],
         subject: 'Rwanda Bus Dashboard Summary',
         text: 'Dashboard summary exported on ${DateTime.now().toString()}',
       );
-      
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -540,7 +547,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     } catch (e) {
       // Close loading dialog
       if (mounted) Navigator.pop(context);
-      
+
       // Show error
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -571,7 +578,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     // Update screens array with the dynamically created dashboard
     List<Widget> updatedScreens = List.from(_screens);
     updatedScreens[0] = updatedDashboard;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
@@ -584,7 +591,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               onPressed: _exportDashboardData,
               tooltip: 'Export Dashboard Data',
             ),
-          
+
           // Refresh button for dashboard
           if (_selectedIndex == 0)
             IconButton(
@@ -592,7 +599,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               onPressed: _loadDashboardData,
               tooltip: 'Refresh Dashboard',
             ),
-          
+
           // Notification icon
           Stack(
             alignment: Alignment.center,
@@ -708,7 +715,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 }
 
-// Updated AdminDashboardHome class without chart dependencies
+// Updated AdminDashboardHome class with fixed welcome section to prevent overflow
 class AdminDashboardHome extends StatelessWidget {
   final int totalBuses;
   final int activeRoutes;
@@ -744,39 +751,50 @@ class AdminDashboardHome extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Welcome section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            // Welcome section - FIXED to prevent overflow
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Welcome, Admin',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueGrey[800],
+                    // Limit width to prevent overflow
+                    Container(
+                      width:
+                          constraints.maxWidth * 0.65, // Limit to 65% of width
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Welcome, Admin',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueGrey[800],
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Here\'s what\'s happening today',
+                            style: TextStyle(color: Colors.grey[600]),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'Here\'s what\'s happening with your bus service today',
-                      style: TextStyle(color: Colors.grey[600]),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        onExport();
+                      },
+                      icon: const Icon(Icons.download),
+                      label: const Text('Export'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryColor,
+                      ),
                     ),
                   ],
-                ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    onExport();
-                  },
-                  icon: const Icon(Icons.download),
-                  label: const Text('Export'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.primaryColor,
-                  ),
-                ),
-              ],
+                );
+              },
             ),
             const SizedBox(height: 30),
             // Stats cards
@@ -836,7 +854,10 @@ class AdminDashboardHome extends StatelessWidget {
                     children: [
                       const Text(
                         'Revenue Overview',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const Spacer(),
                       Text(
@@ -847,7 +868,8 @@ class AdminDashboardHome extends StatelessWidget {
                         ),
                       ),
                     ],
-                  ),const SizedBox(height: 20),
+                  ),
+                  const SizedBox(height: 20),
                   // Simple revenue display instead of chart
                   Container(
                     height: 150,
@@ -860,7 +882,7 @@ class AdminDashboardHome extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.trending_up, 
+                            Icons.trending_up,
                             size: 50,
                             color: Colors.green.withOpacity(0.8),
                           ),
@@ -876,9 +898,7 @@ class AdminDashboardHome extends StatelessWidget {
                           const SizedBox(height: 10),
                           const Text(
                             'Total Revenue',
-                            style: TextStyle(
-                              color: Colors.grey,
-                            ),
+                            style: TextStyle(color: Colors.grey),
                           ),
                         ],
                       ),
@@ -919,27 +939,27 @@ class AdminDashboardHome extends StatelessWidget {
                       TextButton(
                         onPressed: () {
                           onNavigateToPayments();
-                        }, 
-                        child: const Text('See All')
+                        },
+                        child: const Text('See All'),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
                   recentBookings.isEmpty
                       ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Text('No recent bookings'),
-                          ),
-                        )
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: recentBookings.length,
-                          itemBuilder: (context, index) {
-                            return _buildBookingItem(recentBookings[index]);
-                          },
+                        child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Text('No recent bookings'),
                         ),
+                      )
+                      : ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: recentBookings.length,
+                        itemBuilder: (context, index) {
+                          return _buildBookingItem(recentBookings[index]);
+                        },
+                      ),
                 ],
               ),
             ),
@@ -1092,10 +1112,7 @@ class AdminDashboardHome extends StatelessWidget {
       children: [
         Icon(icon, color: color, size: 30),
         const SizedBox(height: 8),
-        Text(
-          title,
-          style: TextStyle(color: Colors.grey[600], fontSize: 12),
-        ),
+        Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
         const SizedBox(height: 4),
         Text(
           value,

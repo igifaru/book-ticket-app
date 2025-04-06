@@ -1,4 +1,4 @@
-// lib/models/bus.dart (updated)
+// lib/models/bus.dart
 class Bus {
   final String id;
   final String name;
@@ -9,6 +9,8 @@ class Bus {
   final int availableSeats;
   final String busType;
   final List<String> features;
+  final String fromLocation; // Added route information
+  final String toLocation; // Added route information
 
   Bus({
     required this.id,
@@ -20,6 +22,8 @@ class Bus {
     required this.availableSeats,
     required this.busType,
     required this.features,
+    this.fromLocation = 'Kigali',
+    this.toLocation = 'Butare',
   });
 
   Map<String, dynamic> toMap() {
@@ -33,6 +37,8 @@ class Bus {
       'available_seats': availableSeats,
       'bus_type': busType,
       'features': features.join(','),
+      'from_location': fromLocation,
+      'to_location': toLocation,
     };
   }
 
@@ -47,6 +53,8 @@ class Bus {
       availableSeats: map['available_seats'],
       busType: map['bus_type'],
       features: map['features'].split(','),
+      fromLocation: map['from_location'] ?? 'Kigali',
+      toLocation: map['to_location'] ?? 'Butare',
     );
   }
 }

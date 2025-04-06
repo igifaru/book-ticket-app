@@ -10,13 +10,13 @@ import 'package:tickiting/utils/database_helper.dart';
 class NotificationModel {
   final int id;
   final String title;
-  final String message;
+  String message; // Changed from final to allow updating
   final DateTime time;
   bool isRead;
   final String type; // 'booking', 'payment', 'user', etc.
   final String recipient; // 'admin', 'user'
   final int? userId; // Optional: ID of the user if recipient is 'user'
-  
+
   NotificationModel({
     required this.id,
     required this.title,
@@ -27,7 +27,7 @@ class NotificationModel {
     required this.recipient,
     this.userId,
   });
-  
+
   // Convert notification to a map for database storage
   Map<String, dynamic> toMap() {
     return {
@@ -41,7 +41,7 @@ class NotificationModel {
       'userId': userId,
     };
   }
-  
+
   // Create a notification from a map (from database)
   factory NotificationModel.fromMap(Map<String, dynamic> map) {
     return NotificationModel(
@@ -60,43 +60,49 @@ class NotificationModel {
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   final DatabaseHelper _databaseHelper = DatabaseHelper();
-  
+
   // Controller for broadcasting notification events
-  final StreamController<NotificationModel> _notificationController = StreamController<NotificationModel>.broadcast();
-  
+  final StreamController<NotificationModel> _notificationController =
+      StreamController<NotificationModel>.broadcast();
+
   // Stream to listen for new notifications
-  Stream<NotificationModel> get notificationStream => _notificationController.stream;
+  Stream<NotificationModel> get notificationStream =>
+      _notificationController.stream;
 
   // Timer for checking new bookings
   Timer? _notificationTimer;
-  
+
   // Settings
   bool _enableNotifications = true;
   bool _enableBookingConfirmation = true;
   bool _enablePaymentReminders = true;
-  
+
   // Private constructor
   NotificationService._internal();
-  
+
   // Factory constructor to return the same instance
   factory NotificationService() {
     return _instance;
   }
-  
+
   // Initialize the service
   Future<void> initialize() async {
     await _loadSettings();
     _startNotificationTimer();
+
+    // Fix existing notifications when the app starts
+    await fixExistingNotifications();
   }
-  
+
   // Load notification settings
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _enableNotifications = prefs.getBool('enable_notifications') ?? true;
-    _enableBookingConfirmation = prefs.getBool('enable_booking_confirmation') ?? true;
+    _enableBookingConfirmation =
+        prefs.getBool('enable_booking_confirmation') ?? true;
     _enablePaymentReminders = prefs.getBool('enable_payment_reminders') ?? true;
   }
-  
+
   // Save notification settings
   Future<void> saveSettings({
     required bool enableNotifications,
@@ -105,22 +111,25 @@ class NotificationService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('enable_notifications', enableNotifications);
-    await prefs.setBool('enable_booking_confirmation', enableBookingConfirmation);
+    await prefs.setBool(
+      'enable_booking_confirmation',
+      enableBookingConfirmation,
+    );
     await prefs.setBool('enable_payment_reminders', enablePaymentReminders);
-    
+
     _enableNotifications = enableNotifications;
     _enableBookingConfirmation = enableBookingConfirmation;
     _enablePaymentReminders = enablePaymentReminders;
-    
+
     // Restart notification timer with new settings
     _startNotificationTimer();
   }
-  
+
   // Start notification timer
   void _startNotificationTimer() {
     // Cancel any existing timer
     _notificationTimer?.cancel();
-    
+
     // Check for new bookings every 30 seconds if notifications are enabled
     if (_enableNotifications) {
       _notificationTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
@@ -128,64 +137,103 @@ class NotificationService {
       });
     }
   }
-  
+
   // Check for new bookings
   Future<void> _checkForNewBookings() async {
     try {
       // Get recent bookings that might need notifications
       final bookings = await _databaseHelper.getAllBookings();
-      
+
       // Filter for new bookings in the last hour that need notifications
       final now = DateTime.now();
       final recentBookings = bookings.where((booking) {
         if (booking.createdAt == null) return false;
-        
+
         final bookingTime = DateTime.parse(booking.createdAt!);
         final timeDifference = now.difference(bookingTime);
-        
+
         // Only process bookings from the last hour that have Pending status
-        return timeDifference.inHours <= 1 && 
-               booking.bookingStatus == 'Pending' &&
-               !booking.notificationSent;
+        return timeDifference.inHours <= 1 &&
+            booking.bookingStatus == 'Pending' &&
+            !booking.notificationSent;
       }).toList();
-      
+
       // Create notifications for new bookings
       for (var booking in recentBookings) {
-        // Get user info
+        // IMPORTANT: Always get the actual user data
         final user = await _databaseHelper.getUserById(booking.userId);
-        if (user != null) {
-          // Notification for admin
-          await createNotification(
-            title: 'New Booking',
-            message: '${user.name} booked a ticket from ${booking.fromLocation} to ${booking.toLocation}',
-            type: 'booking',
-            recipient: 'admin',
-          );
-          
-          // Notification for user
-          await createNotification(
-            title: 'Booking Received',
-            message: 'Your booking from ${booking.fromLocation} to ${booking.toLocation} has been received and is being processed.',
-            type: 'booking_confirmation',
-            recipient: 'user',
-            userId: booking.userId,
-          );
-          
-          // Mark booking as notified
-          await _databaseHelper.updateBookingNotificationStatus(booking.id, true);
+
+        // Make sure we have a valid user name - NEVER use "Admin User"
+        String userName;
+        if (user != null && user.name.isNotEmpty && user.name != "Admin User") {
+          userName = user.name;
+        } else {
+          // Fallback to a generic name with ID
+          userName = "Customer #${booking.userId}";
         }
+
+        // Notification for admin - Use actual user name
+        await createNotification(
+          title: 'New Booking',
+          message:
+              '$userName booked a ticket from ${booking.fromLocation} to ${booking.toLocation}',
+          type: 'booking',
+          recipient: 'admin',
+        );
+
+        // Notification for user
+        await createNotification(
+          title: 'Booking Received',
+          message:
+              'Your booking from ${booking.fromLocation} to ${booking.toLocation} has been received and is being processed.',
+          type: 'booking_confirmation',
+          recipient: 'user',
+          userId: booking.userId,
+        );
+
+        // Mark booking as notified
+        await _databaseHelper.updateBookingNotificationStatus(
+          booking.id,
+          true,
+        );
       }
     } catch (e) {
       debugPrint('Error checking for new bookings: $e');
     }
   }
-  
+
   // Dispose the service
   void dispose() {
     _notificationTimer?.cancel();
     _notificationController.close();
   }
-  
+
+  // Sanitize notification message
+  Future<String> _sanitizeNotificationMessage(String message, int? userId) async {
+    // If message contains "Admin User" and we have a userId, try to get the real name
+    if (message.contains('Admin User') && userId != null) {
+      try {
+        final user = await _databaseHelper.getUserById(userId);
+        if (user != null && user.name.isNotEmpty && user.name != 'Admin User') {
+          return message.replaceAll('Admin User', user.name);
+        } else {
+          // Fallback to a generic "User #ID" if we can't get the real name
+          return message.replaceAll('Admin User', 'User #$userId');
+        }
+      } catch (e) {
+        debugPrint('Error replacing Admin User in notification: $e');
+        // Fallback to generic name
+        return message.replaceAll('Admin User', 'User #$userId');
+      }
+    }
+    // If message contains "Admin User" but no userId, use generic "Customer"
+    else if (message.contains('Admin User')) {
+      return message.replaceAll('Admin User', 'Customer');
+    }
+    
+    return message;
+  }
+
   // Create a new notification
   Future<NotificationModel> createNotification({
     required String title,
@@ -194,6 +242,9 @@ class NotificationService {
     required String recipient,
     int? userId,
   }) async {
+    // Sanitize message to prevent "Admin User" from appearing
+    message = await _sanitizeNotificationMessage(message, userId);
+
     final notification = NotificationModel(
       id: 0, // This will be auto-incremented by the database
       title: title,
@@ -204,7 +255,7 @@ class NotificationService {
       recipient: recipient,
       userId: userId,
     );
-    
+
     // Prepare notification data for database
     final notificationMap = {
       'title': notification.title,
@@ -215,10 +266,10 @@ class NotificationService {
       'recipient': notification.recipient,
       'userId': notification.userId,
     };
-    
+
     // Insert into database
     final id = await _databaseHelper.insertNotification(notificationMap);
-    
+
     // Create a new notification with the generated ID
     final createdNotification = NotificationModel(
       id: id,
@@ -230,60 +281,102 @@ class NotificationService {
       recipient: notification.recipient,
       userId: notification.userId,
     );
-    
+
     // Broadcast the new notification
     _notificationController.add(createdNotification);
-    
+
     return createdNotification;
   }
-  
+
   // Get all notifications for a specific recipient
   Future<List<NotificationModel>> getNotifications({
     required String recipient,
     int? userId,
   }) async {
-    final List<Map<String, dynamic>> maps = await _databaseHelper.getNotifications(
-      recipient: recipient,
-      userId: userId,
-    );
-    
-    return List.generate(maps.length, (i) {
+    final List<Map<String, dynamic>> maps = await _databaseHelper
+        .getNotifications(recipient: recipient, userId: userId);
+
+    final notifications = List.generate(maps.length, (i) {
       return NotificationModel.fromMap(maps[i]);
     });
+
+    // Process notifications to fix any "Admin User" references on the fly
+    for (var notification in notifications) {
+      if (notification.message.contains('Admin User')) {
+        // Try to get the actual user name if the notification has a userId
+        if (notification.userId != null) {
+          try {
+            final user = await _databaseHelper.getUserById(
+              notification.userId!,
+            );
+            if (user != null && user.name.isNotEmpty && user.name != "Admin User") {
+              final updatedMessage = notification.message.replaceAll(
+                'Admin User',
+                user.name,
+              );
+
+              // Update the notification in the database
+              await updateNotificationMessage(notification.id, updatedMessage);
+
+              // Update the in-memory notification object
+              notification.message = updatedMessage;
+            } else {
+              // Fallback to a generic name
+              final updatedMessage = notification.message.replaceAll(
+                'Admin User',
+                'User #${notification.userId}',
+              );
+              
+              await updateNotificationMessage(notification.id, updatedMessage);
+              notification.message = updatedMessage;
+            }
+          } catch (e) {
+            debugPrint(
+              'Error fixing Admin User in notification during retrieval: $e',
+            );
+          }
+        } else {
+          // If no userId, replace with "Customer"
+          final updatedMessage = notification.message.replaceAll(
+            'Admin User',
+            'Customer',
+          );
+          
+          await updateNotificationMessage(notification.id, updatedMessage);
+          notification.message = updatedMessage;
+        }
+      }
+    }
+
+    return notifications;
   }
-  
+
   // Get unread notifications count
-  Future<int> getUnreadCount({
-    required String recipient,
-    int? userId,
-  }) async {
+  Future<int> getUnreadCount({required String recipient, int? userId}) async {
     return await _databaseHelper.getUnreadNotificationsCount(
       recipient: recipient,
       userId: userId,
     );
   }
-  
+
   // Mark a notification as read
   Future<void> markAsRead(int id) async {
     await _databaseHelper.markNotificationAsRead(id);
   }
-  
+
   // Mark all notifications as read
-  Future<void> markAllAsRead({
-    required String recipient,
-    int? userId,
-  }) async {
+  Future<void> markAllAsRead({required String recipient, int? userId}) async {
     await _databaseHelper.markAllNotificationsAsRead(
       recipient: recipient,
       userId: userId,
     );
   }
-  
+
   // Delete a notification
   Future<void> deleteNotification(int id) async {
     await _databaseHelper.deleteNotification(id);
   }
-  
+
   // Delete all notifications for a recipient
   Future<void> deleteAllNotifications({
     required String recipient,
@@ -291,7 +384,7 @@ class NotificationService {
   }) async {
     String? whereClause;
     List<dynamic>? whereArgs;
-    
+
     if (userId != null) {
       whereClause = 'recipient = ? AND userId = ?';
       whereArgs = [recipient, userId];
@@ -299,15 +392,11 @@ class NotificationService {
       whereClause = 'recipient = ?';
       whereArgs = [recipient];
     }
-    
+
     final db = await _databaseHelper.database;
-    await db.delete(
-      'notifications',
-      where: whereClause,
-      whereArgs: whereArgs,
-    );
+    await db.delete('notifications', where: whereClause, whereArgs: whereArgs);
   }
-  
+
   // Create a booking notification for admin
   Future<NotificationModel> createBookingNotificationForAdmin({
     required int userId,
@@ -315,11 +404,26 @@ class NotificationService {
     required String origin,
     required String destination,
   }) async {
-    if (!_enableNotifications || !_enableBookingConfirmation) return Future.error('Notifications disabled');
-    
+    if (!_enableNotifications || !_enableBookingConfirmation)
+      return Future.error('Notifications disabled');
+
+    // IMPORTANT: Always get the actual user name from the database
+    String displayName;
+    try {
+      final user = await _databaseHelper.getUserById(userId);
+      if (user != null && user.name.isNotEmpty && user.name != "Admin User") {
+        displayName = user.name;
+      } else {
+        displayName = userName != 'Admin User' ? userName : 'User #$userId';
+      }
+    } catch (e) {
+      debugPrint('Error fetching user name: $e');
+      displayName = userName != 'Admin User' ? userName : 'User #$userId';
+    }
+
     final title = 'New Booking';
-    final message = '$userName booked a ticket from $origin to $destination';
-    
+    final message = '$displayName booked a ticket from $origin to $destination';
+
     return createNotification(
       title: title,
       message: message,
@@ -327,19 +431,34 @@ class NotificationService {
       recipient: 'admin',
     );
   }
-  
+
   // Create a payment notification for admin
   Future<NotificationModel> createPaymentNotificationForAdmin({
     required int userId,
     required String userName,
     required double amount,
-    String currency = 'RWF', // Changed from required to optional with default value
+    String currency = 'RWF',
   }) async {
-    if (!_enableNotifications || !_enablePaymentReminders) return Future.error('Notifications disabled');
-    
+    if (!_enableNotifications || !_enablePaymentReminders)
+      return Future.error('Notifications disabled');
+
+    // Get the actual user name for payment notifications too
+    String displayName;
+    try {
+      final user = await _databaseHelper.getUserById(userId);
+      if (user != null && user.name.isNotEmpty && user.name != "Admin User") {
+        displayName = user.name;
+      } else {
+        displayName = userName != 'Admin User' ? userName : 'User #$userId';
+      }
+    } catch (e) {
+      debugPrint('Error fetching user name: $e');
+      displayName = userName != 'Admin User' ? userName : 'User #$userId';
+    }
+
     final title = 'Payment Received';
-    final message = 'Payment of $amount $currency received from $userName';
-    
+    final message = 'Payment of $amount $currency received from $displayName';
+
     return createNotification(
       title: title,
       message: message,
@@ -347,7 +466,7 @@ class NotificationService {
       recipient: 'admin',
     );
   }
-  
+
   // Create a booking confirmation notification for user
   Future<NotificationModel> createBookingConfirmationForUser({
     required int userId,
@@ -356,11 +475,13 @@ class NotificationService {
     required String destination,
     required DateTime travelDate,
   }) async {
-    if (!_enableNotifications || !_enableBookingConfirmation) return Future.error('Notifications disabled');
-    
+    if (!_enableNotifications || !_enableBookingConfirmation)
+      return Future.error('Notifications disabled');
+
     final title = 'Booking Confirmed';
-    final message = 'Your ticket from $origin to $destination on ${_formatDate(travelDate)} has been confirmed.';
-    
+    final message =
+        'Your ticket from $origin to $destination on ${_formatDate(travelDate)} has been confirmed.';
+
     return createNotification(
       title: title,
       message: message,
@@ -369,19 +490,21 @@ class NotificationService {
       userId: userId,
     );
   }
-  
+
   // Create a payment confirmation notification for user
   Future<NotificationModel> createPaymentConfirmationForUser({
     required int userId,
     required String userName,
     required double amount,
-    String currency = 'RWF', // Changed from required to optional with default value
+    String currency = 'RWF',
   }) async {
-    if (!_enableNotifications || !_enablePaymentReminders) return Future.error('Notifications disabled');
-    
+    if (!_enableNotifications || !_enablePaymentReminders)
+      return Future.error('Notifications disabled');
+
     final title = 'Payment Confirmed';
-    final message = 'Your payment of $amount $currency has been received. Thank you!';
-    
+    final message =
+        'Your payment of $amount $currency has been received. Thank you!';
+
     return createNotification(
       title: title,
       message: message,
@@ -390,7 +513,7 @@ class NotificationService {
       userId: userId,
     );
   }
-  
+
   // Create booking status update notification for user
   Future<NotificationModel> createBookingStatusUpdateForUser({
     required int userId,
@@ -400,27 +523,31 @@ class NotificationService {
     required String destination,
   }) async {
     if (!_enableNotifications) return Future.error('Notifications disabled');
-    
+
     String title, message;
-    
+
     switch (status.toLowerCase()) {
       case 'confirmed':
         title = 'Booking Confirmed';
-        message = 'Your booking from $origin to $destination has been confirmed.';
+        message =
+            'Your booking from $origin to $destination has been confirmed.';
         break;
       case 'cancelled':
         title = 'Booking Cancelled';
-        message = 'Your booking from $origin to $destination has been cancelled.';
+        message =
+            'Your booking from $origin to $destination has been cancelled.';
         break;
       case 'completed':
         title = 'Trip Completed';
-        message = 'Your trip from $origin to $destination has been completed. Thank you for traveling with us!';
+        message =
+            'Your trip from $origin to $destination has been completed. Thank you for traveling with us!';
         break;
       default:
         title = 'Booking Update';
-        message = 'Your booking from $origin to $destination has been updated to $status.';
+        message =
+            'Your booking from $origin to $destination has been updated to $status.';
     }
-    
+
     return createNotification(
       title: title,
       message: message,
@@ -429,9 +556,139 @@ class NotificationService {
       userId: userId,
     );
   }
-  
+
   // Format date helper function
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  // Update notification message
+  Future<void> updateNotificationMessage(
+    int notificationId,
+    String newMessage,
+  ) async {
+    final db = await _databaseHelper.database;
+    await db.update(
+      'notifications',
+      {'message': newMessage},
+      where: 'id = ?',
+      whereArgs: [notificationId],
+    );
+  }
+
+  // Fix existing notifications
+  Future<void> fixExistingNotifications() async {
+    try {
+      final db = await _databaseHelper.database;
+      
+      // Get all users except Admin User to have a list of real names
+      final users = await _databaseHelper.getAllUsers();
+      final realUsers = users.where((user) => user.name != 'Admin User').toList();
+      
+      if (realUsers.isEmpty) {
+        debugPrint('No real users found to fix notifications');
+        // Still attempt to replace "Admin User" with "System Administrator"
+        await db.rawUpdate(
+          "UPDATE notifications SET message = REPLACE(message, 'Admin User', 'System Administrator')"
+        );
+        return;
+      }
+      
+      // Default to the first real user if we can't determine the actual user
+      final defaultRealUser = realUsers.first;
+
+      // Get all notifications with "Admin User" in the message
+      final List<Map<String, dynamic>> notifications = await db.query(
+        'notifications',
+        where: 'message LIKE ?',
+        whereArgs: ['%Admin User%'],
+      );
+
+      debugPrint(
+        'Found ${notifications.length} notifications with "Admin User" to fix',
+      );
+
+      // Process each notification that needs fixing
+      for (var notification in notifications) {
+        final int id = notification['id'];
+        final String message = notification['message'];
+        final int? userId = notification['userId'];
+        String updatedMessage = message;
+        
+        // Try several approaches to find the correct user
+        
+        // APPROACH 1: If notification has userId, use it directly
+        if (userId != null) {
+          try {
+            final user = await _databaseHelper.getUserById(userId);
+            if (user != null && user.name.isNotEmpty && user.name != 'Admin User') {
+              updatedMessage = message.replaceAll('Admin User', user.name);
+            }
+          } catch (e) {
+            debugPrint('Error getting user by ID for notification #$id: $e');
+          }
+        }
+        
+        // APPROACH 2: If message is a booking notification, try to extract location info
+        if (message.contains('booked a ticket from') && updatedMessage == message) {
+          try {
+            final regex = RegExp(r'Admin User booked a ticket from (\w+) to (\w+)');
+            final match = regex.firstMatch(message);
+            
+            if (match != null) {
+              final fromLocation = match.group(1);
+              final toLocation = match.group(2);
+              
+              // Find bookings with matching locations
+              final bookings = await _databaseHelper.getAllBookings();
+              final matchingBookings = bookings.where(
+                (booking) => 
+                  booking.fromLocation == fromLocation && 
+                  booking.toLocation == toLocation
+              ).toList();
+              
+              if (matchingBookings.isNotEmpty) {
+                // Use most recent matching booking
+                final booking = matchingBookings.first;
+                final user = await _databaseHelper.getUserById(booking.userId);
+                
+                if (user != null && user.name.isNotEmpty && user.name != 'Admin User') {
+                  updatedMessage = message.replaceAll('Admin User', user.name);
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error matching booking locations for notification #$id: $e');
+          }
+        }
+        
+        // APPROACH 3: If still using Admin User, use default real user
+        if (updatedMessage.contains('Admin User')) {
+          updatedMessage = message.replaceAll(
+            'Admin User', 
+            defaultRealUser.name
+          );
+        }
+        
+        // Only update if we actually changed something
+        if (updatedMessage != message) {
+          try {
+            await db.update(
+              'notifications',
+              {'message': updatedMessage},
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+            debugPrint('Fixed notification #$id: "$message" -> "$updatedMessage"');
+          } catch (e) {
+            debugPrint('Error updating notification #$id: $e');
+          }
+        }
+      }
+
+      debugPrint('Completed fixing existing notifications');
+    } catch (e) {
+      debugPrint('Error in fixExistingNotifications: $e');
+    }
   }
 }
