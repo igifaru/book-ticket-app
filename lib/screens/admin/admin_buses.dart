@@ -13,25 +13,15 @@ class AdminBuses extends StatefulWidget {
 
 class _AdminBusesState extends State<AdminBuses> {
   List<Bus> buses = [];
+  List<String> locations = [];
   bool _isLoading = true;
-  final List<String> locations = [
-    'Kigali',
-    'Butare',
-    'Gisenyi',
-    'Ruhengeri',
-    'Cyangugu',
-    'Kibungo',
-    'Gitarama',
-    'Byumba',
-    'Huye',
-    'Musanze',
-  ];
 
   @override
   void initState() {
     super.initState();
     // Check and fix database schema
     _checkDatabaseSchema();
+    _loadLocations();
     _loadBuses();
   }
 
@@ -40,6 +30,33 @@ class _AdminBusesState extends State<AdminBuses> {
       await DatabaseHelper().ensureRouteColumnsExist();
     } catch (e) {
       print("Error checking database schema: $e");
+    }
+  }
+
+  // Load locations from database
+  Future<void> _loadLocations() async {
+    try {
+      final loadedLocations = await DatabaseHelper().getAllUniqueLocations();
+      setState(() {
+        locations = loadedLocations;
+      });
+    } catch (e) {
+      print('Error loading locations: $e');
+      // Use default locations if there's an error
+      setState(() {
+        locations = [
+          'Kigali',
+          'Butare',
+          'Gisenyi',
+          'Ruhengeri',
+          'Cyangugu',
+          'Kibungo',
+          'Gitarama',
+          'Byumba',
+          'Huye',
+          'Musanze',
+        ];
+      });
     }
   }
 
@@ -71,10 +88,35 @@ class _AdminBusesState extends State<AdminBuses> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title
-            const Text(
-              'Bus Management',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            // Title and manage locations button
+            // Replace the title and manage locations button row with this code
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Flexible(
+                  child: Text(
+                    'Bus Management',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 10), // Add a small space between
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _showManageLocationsDialog(context);
+                  },
+                  icon: const Icon(Icons.location_on, size: 18),
+                  label: const Text('Locations'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    textStyle: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
             // Search and filter
@@ -104,20 +146,21 @@ class _AdminBusesState extends State<AdminBuses> {
             const SizedBox(height: 20),
             // Bus list
             Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : buses.isEmpty
+              child:
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : buses.isEmpty
                       ? const Center(child: Text('No buses found'))
                       : RefreshIndicator(
-                          onRefresh: _loadBuses,
-                          child: ListView.builder(
-                            itemCount: buses.length,
-                            itemBuilder: (context, index) {
-                              final bus = buses[index];
-                              return _buildBusCard(bus, index);
-                            },
-                          ),
+                        onRefresh: _loadBuses,
+                        child: ListView.builder(
+                          itemCount: buses.length,
+                          itemBuilder: (context, index) {
+                            final bus = buses[index];
+                            return _buildBusCard(bus, index);
+                          },
                         ),
+                      ),
             ),
           ],
         ),
@@ -167,9 +210,10 @@ class _AdminBusesState extends State<AdminBuses> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: bus.busType == 'Premium'
-                        ? Colors.amber[100]
-                        : bus.busType == 'Standard'
+                    color:
+                        bus.busType == 'Premium'
+                            ? Colors.amber[100]
+                            : bus.busType == 'Standard'
                             ? Colors.blue[100]
                             : Colors.green[100],
                     borderRadius: BorderRadius.circular(4),
@@ -177,9 +221,10 @@ class _AdminBusesState extends State<AdminBuses> {
                   child: Text(
                     bus.busType,
                     style: TextStyle(
-                      color: bus.busType == 'Premium'
-                          ? Colors.amber[800]
-                          : bus.busType == 'Standard'
+                      color:
+                          bus.busType == 'Premium'
+                              ? Colors.amber[800]
+                              : bus.busType == 'Standard'
                               ? Colors.blue[800]
                               : Colors.green[800],
                       fontWeight: FontWeight.bold,
@@ -360,12 +405,13 @@ class _AdminBusesState extends State<AdminBuses> {
     final seatsController = TextEditingController(
       text: bus?.availableSeats.toString() ?? '30',
     );
+    final newLocationController = TextEditingController();
 
     // Create mutable copies of all values that will be modified in the dialog
     String busType = bus?.busType ?? 'Standard';
     String fromLocation = bus?.fromLocation ?? 'Kigali';
     String toLocation = bus?.toLocation ?? 'Butare';
-    
+
     // Using separate boolean variables for each feature
     bool hasAC = bus?.features.contains('AC') ?? true;
     bool hasWiFi = bus?.features.contains('WiFi') ?? false;
@@ -392,7 +438,9 @@ class _AdminBusesState extends State<AdminBuses> {
                       children: [
                         TextFormField(
                           controller: idController,
-                          decoration: const InputDecoration(labelText: 'Bus ID'),
+                          decoration: const InputDecoration(
+                            labelText: 'Bus ID',
+                          ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'Please enter bus ID';
@@ -403,7 +451,9 @@ class _AdminBusesState extends State<AdminBuses> {
                         const SizedBox(height: 10),
                         TextFormField(
                           controller: nameController,
-                          decoration: const InputDecoration(labelText: 'Bus Name'),
+                          decoration: const InputDecoration(
+                            labelText: 'Bus Name',
+                          ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'Please enter bus name';
@@ -414,13 +464,16 @@ class _AdminBusesState extends State<AdminBuses> {
                         const SizedBox(height: 10),
                         DropdownButtonFormField<String>(
                           value: busType,
-                          decoration: const InputDecoration(labelText: 'Bus Type'),
-                          items: ['Economy', 'Standard', 'Premium'].map((type) {
-                            return DropdownMenuItem<String>(
-                              value: type,
-                              child: Text(type),
-                            );
-                          }).toList(),
+                          decoration: const InputDecoration(
+                            labelText: 'Bus Type',
+                          ),
+                          items:
+                              ['Economy', 'Standard', 'Premium'].map((type) {
+                                return DropdownMenuItem<String>(
+                                  value: type,
+                                  child: Text(type),
+                                );
+                              }).toList(),
                           onChanged: (value) {
                             if (value != null) {
                               setStateDialog(() {
@@ -430,7 +483,7 @@ class _AdminBusesState extends State<AdminBuses> {
                           },
                         ),
                         const SizedBox(height: 15),
-                        
+
                         // Route Information
                         Container(
                           padding: const EdgeInsets.all(10),
@@ -451,14 +504,17 @@ class _AdminBusesState extends State<AdminBuses> {
                               const SizedBox(height: 10),
                               DropdownButtonFormField<String>(
                                 value: fromLocation,
-                                decoration: const InputDecoration(labelText: 'From'),
+                                decoration: const InputDecoration(
+                                  labelText: 'From',
+                                ),
                                 isExpanded: true,
-                                items: locations.map((location) {
-                                  return DropdownMenuItem<String>(
-                                    value: location,
-                                    child: Text(location),
-                                  );
-                                }).toList(),
+                                items:
+                                    locations.map((location) {
+                                      return DropdownMenuItem<String>(
+                                        value: location,
+                                        child: Text(location),
+                                      );
+                                    }).toList(),
                                 onChanged: (value) {
                                   if (value != null) {
                                     setStateDialog(() {
@@ -476,17 +532,77 @@ class _AdminBusesState extends State<AdminBuses> {
                                   return null;
                                 },
                               ),
+
+                              const SizedBox(height: 5),
+
+                              // Add new location row
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: newLocationController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Add New Location',
+                                        hintText: 'e.g., Nyanza',
+                                        isDense: true,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.add_circle,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                    onPressed: () {
+                                      final newLocation =
+                                          newLocationController.text.trim();
+                                      if (newLocation.isNotEmpty) {
+                                        if (!locations.contains(newLocation)) {
+                                          // Save the location to the database
+                                          DatabaseHelper()
+                                              .saveLocation(newLocation)
+                                              .then((result) {
+                                                if (result > 0) {
+                                                  setStateDialog(() {
+                                                    locations.add(newLocation);
+                                                    locations.sort();
+                                                    newLocationController
+                                                        .clear();
+                                                  });
+                                                }
+                                              });
+                                        } else {
+                                          // Show a snackbar that the location already exists
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Location "$newLocation" already exists',
+                                              ),
+                                              backgroundColor: Colors.orange,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: 10),
                               DropdownButtonFormField<String>(
                                 value: toLocation,
-                                decoration: const InputDecoration(labelText: 'To'),
+                                decoration: const InputDecoration(
+                                  labelText: 'To',
+                                ),
                                 isExpanded: true,
-                                items: locations.map((location) {
-                                  return DropdownMenuItem<String>(
-                                    value: location,
-                                    child: Text(location),
-                                  );
-                                }).toList(),
+                                items:
+                                    locations.map((location) {
+                                      return DropdownMenuItem<String>(
+                                        value: location,
+                                        child: Text(location),
+                                      );
+                                    }).toList(),
                                 onChanged: (value) {
                                   if (value != null) {
                                     setStateDialog(() {
@@ -504,11 +620,23 @@ class _AdminBusesState extends State<AdminBuses> {
                                   return null;
                                 },
                               ),
+
+                              const SizedBox(height: 15),
+
+                              // Helper text
+                              Text(
+                                'Newly added locations will be available in the user booking screen',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
                             ],
                           ),
                         ),
                         const SizedBox(height: 15),
-                        
+
                         TextFormField(
                           controller: departureTimeController,
                           decoration: const InputDecoration(
@@ -538,7 +666,9 @@ class _AdminBusesState extends State<AdminBuses> {
                         TextFormField(
                           controller: priceController,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Price (RWF)'),
+                          decoration: const InputDecoration(
+                            labelText: 'Price (RWF)',
+                          ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'Please enter price';
@@ -553,7 +683,9 @@ class _AdminBusesState extends State<AdminBuses> {
                         TextFormField(
                           controller: seatsController,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Available Seats'),
+                          decoration: const InputDecoration(
+                            labelText: 'Available Seats',
+                          ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'Please enter available seats';
@@ -565,11 +697,14 @@ class _AdminBusesState extends State<AdminBuses> {
                           },
                         ),
                         const SizedBox(height: 15),
-                        
+
                         // Features section with individual checkboxes
                         const Text(
                           'Features',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                         const SizedBox(height: 10),
                         Row(
@@ -584,7 +719,8 @@ class _AdminBusesState extends State<AdminBuses> {
                                   });
                                 },
                                 dense: true,
-                                controlAffinity: ListTileControlAffinity.leading,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
                               ),
                             ),
                           ],
@@ -601,7 +737,8 @@ class _AdminBusesState extends State<AdminBuses> {
                                   });
                                 },
                                 dense: true,
-                                controlAffinity: ListTileControlAffinity.leading,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
                               ),
                             ),
                           ],
@@ -618,7 +755,8 @@ class _AdminBusesState extends State<AdminBuses> {
                                   });
                                 },
                                 dense: true,
-                                controlAffinity: ListTileControlAffinity.leading,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
                               ),
                             ),
                           ],
@@ -635,7 +773,8 @@ class _AdminBusesState extends State<AdminBuses> {
                                   });
                                 },
                                 dense: true,
-                                controlAffinity: ListTileControlAffinity.leading,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
                               ),
                             ),
                           ],
@@ -652,7 +791,8 @@ class _AdminBusesState extends State<AdminBuses> {
                                   });
                                 },
                                 dense: true,
-                                controlAffinity: ListTileControlAffinity.leading,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
                               ),
                             ),
                           ],
@@ -700,9 +840,22 @@ class _AdminBusesState extends State<AdminBuses> {
 
                         // Calculate duration
                         String duration = _calculateDuration(
-                          departureTimeController.text, 
-                          arrivalTimeController.text
+                          departureTimeController.text,
+                          arrivalTimeController.text,
                         );
+
+                        // Update locations list in the parent widget too
+                        setState(() {
+                          // Ensure both locations are in our main list
+                          if (!locations.contains(fromLocation)) {
+                            locations.add(fromLocation);
+                          }
+                          if (!locations.contains(toLocation)) {
+                            locations.add(toLocation);
+                          }
+                          // Sort locations alphabetically
+                          locations.sort();
+                        });
 
                         final newBus = Bus(
                           id: idController.text,
@@ -731,18 +884,20 @@ class _AdminBusesState extends State<AdminBuses> {
 
                         // Dismiss loading dialog
                         Navigator.pop(context);
-                        
+
                         // Dismiss edit dialog
                         Navigator.pop(context);
-                        
+
                         // Refresh bus list
                         _loadBuses();
-                        
+
                         // Show success message
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              bus == null ? 'Bus added successfully' : 'Bus updated successfully'
+                              bus == null
+                                  ? 'Bus added successfully'
+                                  : 'Bus updated successfully',
                             ),
                             backgroundColor: Colors.green,
                           ),
@@ -752,7 +907,7 @@ class _AdminBusesState extends State<AdminBuses> {
                         if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
-                        
+
                         // Show error message
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -778,48 +933,49 @@ class _AdminBusesState extends State<AdminBuses> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Bus'),
-        content: const Text(
-          'Are you sure you want to delete this bus? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                // Delete bus from database
-                await DatabaseHelper().deleteBus(bus.id);
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Bus'),
+            content: const Text(
+              'Are you sure you want to delete this bus? This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  try {
+                    // Delete bus from database
+                    await DatabaseHelper().deleteBus(bus.id);
 
-                // Reload buses from database
-                _loadBuses();
+                    // Reload buses from database
+                    _loadBuses();
 
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Bus deleted successfully'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Bus deleted successfully'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -879,5 +1035,169 @@ class _AdminBusesState extends State<AdminBuses> {
       // Return current time as fallback
       return DateTime.now();
     }
+  }
+
+  // Method to show location management dialog
+  void _showManageLocationsDialog(BuildContext context) {
+    final TextEditingController newLocationController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Manage Locations'),
+              content: Container(
+                width: MediaQuery.of(context).size.width * 0.7,
+                height: MediaQuery.of(context).size.height * 0.6,
+                child: Column(
+                  children: [
+                    // Add new location
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: newLocationController,
+                            decoration: const InputDecoration(
+                              labelText: 'New Location',
+                              hintText: 'Enter location name',
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.add_circle,
+                            color: AppTheme.primaryColor,
+                          ),
+                          onPressed: () {
+                            final newLocation =
+                                newLocationController.text.trim();
+                            if (newLocation.isNotEmpty) {
+                              if (!locations.contains(newLocation)) {
+                                // Save the location to the database
+                                DatabaseHelper().saveLocation(newLocation).then((
+                                  result,
+                                ) {
+                                  if (result > 0) {
+                                    setStateDialog(() {
+                                      locations.add(newLocation);
+                                      locations.sort();
+                                      newLocationController.clear();
+
+                                      // Also update the parent state
+                                      setState(() {});
+                                    });
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Location "$newLocation" added successfully',
+                                        ),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                });
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Location "$newLocation" already exists',
+                                    ),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                                newLocationController.clear();
+                              }
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Current Locations',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // List of current locations
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: locations.length,
+                        itemBuilder: (context, index) {
+                          return ListTile(
+                            dense: true,
+                            title: Text(locations[index]),
+                            trailing: IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                              ),
+                              onPressed: () {
+                                // Check if location is used by any bus
+                                bool isUsed = buses.any(
+                                  (bus) =>
+                                      bus.fromLocation == locations[index] ||
+                                      bus.toLocation == locations[index],
+                                );
+
+                                if (isUsed) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Cannot delete "${locations[index]}" as it is used by existing buses',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                // Delete the location from the database
+                                DatabaseHelper()
+                                    .deleteLocation(locations[index])
+                                    .then((_) {
+                                      setStateDialog(() {
+                                        locations.removeAt(index);
+                                        // Also update the parent state
+                                        setState(() {});
+                                      });
+
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Location deleted successfully',
+                                          ),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    });
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Done'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }

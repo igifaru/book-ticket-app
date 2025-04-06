@@ -1009,12 +1009,88 @@ class DatabaseHelper {
     await db.delete('notifications');
     await db.delete('users');
   }
-  // Add this method to DatabaseHelper class
+ // Add this method to DatabaseHelper class
 
-  // Get all unique locations from buses table
+  // Create locations table if it doesn't exist
+  Future<void> _createLocationsTableIfNeeded() async {
+    final db = await database;
+    
+    try {
+      // Check if the locations table exists
+      var tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='locations'");
+      if (tables.isEmpty) {
+        // Create the locations table
+        await db.execute('''
+          CREATE TABLE locations(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        ''');
+        
+        print("Created locations table");
+        
+        // Insert default locations
+        List<String> defaultLocations = [
+          'Kigali', 'Butare', 'Gisenyi', 'Ruhengeri', 'Cyangugu',
+          'Kibungo', 'Gitarama', 'Byumba', 'Huye', 'Musanze',
+        ];
+        
+        for (var location in defaultLocations) {
+          await db.insert('locations', {'name': location});
+        }
+        
+        print("Inserted default locations");
+      }
+    } catch (e) {
+      print("Error creating locations table: $e");
+    }
+  }
+  
+  // Save a new location to the database
+  Future<int> saveLocation(String locationName) async {
+    await _createLocationsTableIfNeeded();
+    final db = await database;
+    
+    try {
+      return await db.insert(
+        'locations', 
+        {'name': locationName},
+        conflictAlgorithm: ConflictAlgorithm.ignore // Skip if location already exists
+      );
+    } catch (e) {
+      print("Error saving location: $e");
+      return -1;
+    }
+  }
+  
+  // Delete a location from the database
+  Future<int> deleteLocation(String locationName) async {
+    await _createLocationsTableIfNeeded();
+    final db = await database;
+    
+    try {
+      return await db.delete(
+        'locations',
+        where: 'name = ?',
+        whereArgs: [locationName]
+      );
+    } catch (e) {
+      print("Error deleting location: $e");
+      return -1;
+    }
+  }
+  
+  // Get all unique locations from both the locations table and buses table
   Future<List<String>> getAllUniqueLocations() async {
+    await _createLocationsTableIfNeeded();
     Database db = await database;
     
+    // Get locations from the locations table
+    List<Map<String, dynamic>> locationResults = await db.query('locations');
+    Set<String> uniqueLocations = locationResults.map((map) => map['name'] as String).toSet();
+    
+    // Also get locations from buses table to ensure we don't miss any
     // Query distinct from_location values
     List<Map<String, dynamic>> fromResults = await db.rawQuery(
       'SELECT DISTINCT from_location FROM buses WHERE from_location IS NOT NULL'
@@ -1025,9 +1101,7 @@ class DatabaseHelper {
       'SELECT DISTINCT to_location FROM buses WHERE to_location IS NOT NULL'
     );
     
-    // Combine the results and remove duplicates
-    Set<String> uniqueLocations = {};
-    
+    // Add bus locations to our set
     for (var result in fromResults) {
       final location = result['from_location'] as String;
       if (location.isNotEmpty) {
