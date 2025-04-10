@@ -1,12 +1,12 @@
-// lib/models/user.dart
+
 class User {
-  final int? id;
-  String name;  // Make mutable
-  final String email;
-  String password;  // Make mutable
-  String phone;  // Make mutable
-  final String gender;
-  final String? createdAt;
+  int? id;
+  String name;
+  String email;
+  String password;
+  String phone;
+  String gender;
+  String? createdAt;
 
   User({
     this.id,
@@ -36,7 +36,7 @@ class User {
       name: map['name'],
       email: map['email'],
       password: map['password'],
-      phone: map['phone'],
+      phone: map['phone'] ?? '',  // Handle possible null value
       gender: map['gender'],
       createdAt: map['created_at'],
     );

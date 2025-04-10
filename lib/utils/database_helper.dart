@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:tickiting/models/user.dart';
 import 'package:tickiting/models/bus.dart';
 import 'package:tickiting/models/booking.dart';
+import 'dart:math';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -28,7 +29,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 3, // Increased version for schema change
+      version: 4, // Increased version for schema change
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -47,6 +48,20 @@ class DatabaseHelper {
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     ''');
+    await db.execute('''
+    CREATE TABLE reset_tokens(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      token TEXT NOT NULL,
+      verification_method TEXT NOT NULL,
+      expiry_time TIMESTAMP NOT NULL,
+      is_used INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+  ''');
 
     // Create buses table with route information
     await db.execute('''
@@ -146,6 +161,28 @@ class DatabaseHelper {
         print("Added route information columns to buses table");
       } catch (e) {
         print("Error adding route information columns: $e");
+      }
+    }
+    if (oldVersion < 4) {
+      // Add reset_tokens table if upgrading to version 4
+      try {
+        await db.execute('''
+        CREATE TABLE IF NOT EXISTS reset_tokens(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          email TEXT NOT NULL,
+          phone TEXT NOT NULL, 
+          token TEXT NOT NULL,
+          verification_method TEXT NOT NULL,
+          expiry_time TIMESTAMP NOT NULL,
+          is_used INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+      ''');
+        print("Added reset_tokens table");
+      } catch (e) {
+        print("Error adding reset_tokens table: $e");
       }
     }
   }
@@ -1009,15 +1046,17 @@ class DatabaseHelper {
     await db.delete('notifications');
     await db.delete('users');
   }
- // Add this method to DatabaseHelper class
+  // Add this method to DatabaseHelper class
 
   // Create locations table if it doesn't exist
   Future<void> _createLocationsTableIfNeeded() async {
     final db = await database;
-    
+
     try {
       // Check if the locations table exists
-      var tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='locations'");
+      var tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='locations'",
+      );
       if (tables.isEmpty) {
         // Create the locations table
         await db.execute('''
@@ -1027,80 +1066,90 @@ class DatabaseHelper {
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
         ''');
-        
+
         print("Created locations table");
-        
+
         // Insert default locations
         List<String> defaultLocations = [
-          'Kigali', 'Butare', 'Gisenyi', 'Ruhengeri', 'Cyangugu',
-          'Kibungo', 'Gitarama', 'Byumba', 'Huye', 'Musanze',
+          'Kigali',
+          'Butare',
+          'Gisenyi',
+          'Ruhengeri',
+          'Cyangugu',
+          'Kibungo',
+          'Gitarama',
+          'Byumba',
+          'Huye',
+          'Musanze',
         ];
-        
+
         for (var location in defaultLocations) {
           await db.insert('locations', {'name': location});
         }
-        
+
         print("Inserted default locations");
       }
     } catch (e) {
       print("Error creating locations table: $e");
     }
   }
-  
+
   // Save a new location to the database
   Future<int> saveLocation(String locationName) async {
     await _createLocationsTableIfNeeded();
     final db = await database;
-    
+
     try {
       return await db.insert(
-        'locations', 
+        'locations',
         {'name': locationName},
-        conflictAlgorithm: ConflictAlgorithm.ignore // Skip if location already exists
+        conflictAlgorithm:
+            ConflictAlgorithm.ignore, // Skip if location already exists
       );
     } catch (e) {
       print("Error saving location: $e");
       return -1;
     }
   }
-  
+
   // Delete a location from the database
   Future<int> deleteLocation(String locationName) async {
     await _createLocationsTableIfNeeded();
     final db = await database;
-    
+
     try {
       return await db.delete(
         'locations',
         where: 'name = ?',
-        whereArgs: [locationName]
+        whereArgs: [locationName],
       );
     } catch (e) {
       print("Error deleting location: $e");
       return -1;
     }
   }
-  
+
   // Get all unique locations from both the locations table and buses table
   Future<List<String>> getAllUniqueLocations() async {
     await _createLocationsTableIfNeeded();
     Database db = await database;
-    
+
     // Get locations from the locations table
     List<Map<String, dynamic>> locationResults = await db.query('locations');
-    Set<String> uniqueLocations = locationResults.map((map) => map['name'] as String).toSet();
-    
+    Set<String> uniqueLocations =
+        locationResults.map((map) => map['name'] as String).toSet();
+
     // Also get locations from buses table to ensure we don't miss any
     // Query distinct from_location values
     List<Map<String, dynamic>> fromResults = await db.rawQuery(
-      'SELECT DISTINCT from_location FROM buses WHERE from_location IS NOT NULL'
+      'SELECT DISTINCT from_location FROM buses WHERE from_location IS NOT NULL',
     );
-    
+
     // Query distinct to_location values
     List<Map<String, dynamic>> toResults = await db.rawQuery(
-      'SELECT DISTINCT to_location FROM buses WHERE to_location IS NOT NULL'
+      'SELECT DISTINCT to_location FROM buses WHERE to_location IS NOT NULL',
     );
-    
+
     // Add bus locations to our set
     for (var result in fromResults) {
       final location = result['from_location'] as String;
@@ -1108,17 +1157,17 @@ class DatabaseHelper {
         uniqueLocations.add(location);
       }
     }
-    
+
     for (var result in toResults) {
       final location = result['to_location'] as String;
       if (location.isNotEmpty) {
         uniqueLocations.add(location);
       }
     }
-    
+
     // Convert to list and sort alphabetically
     List<String> locationList = uniqueLocations.toList()..sort();
-    
+
     // If list is empty, return default locations
     if (locationList.isEmpty) {
       return [
@@ -1134,7 +1183,176 @@ class DatabaseHelper {
         'Musanze',
       ];
     }
-    
+
     return locationList;
   }
+
+  Future<Map<String, dynamic>> createPasswordResetToken(
+    String emailOrPhone,
+    String verificationMethod,
+  ) async {
+    Database db = await database;
+    User? user;
+
+    // Find user by email or phone
+    if (verificationMethod == 'email') {
+      user = await getUserByEmail(emailOrPhone);
+    } else {
+      // Assuming you have a method to get user by phone
+      List<Map<String, dynamic>> maps = await db.query(
+        'users',
+        where: 'phone = ?',
+        whereArgs: [emailOrPhone],
+      );
+
+      if (maps.isNotEmpty) {
+        user = User.fromMap(maps.first);
+      }
+    }
+
+    if (user == null) {
+      return {
+        'success': false,
+        'message': 'No account found with this $verificationMethod',
+      };
+    }
+
+    // Generate a 6-digit random token
+    final random = new Random();
+    String token = '';
+    for (int i = 0; i < 6; i++) {
+      token += random.nextInt(10).toString();
+    }
+
+    // Set expiry time (1 hour from now)
+    final expiryTime = DateTime.now().add(Duration(hours: 1)).toIso8601String();
+
+    // Delete any existing tokens for this user
+    await db.delete('reset_tokens', where: 'user_id = ?', whereArgs: [user.id]);
+
+    // Save the new token
+    await db.insert('reset_tokens', {
+      'user_id': user.id,
+      'email': user.email,
+      'phone': user.phone,
+      'token': token,
+      'verification_method': verificationMethod,
+      'expiry_time': expiryTime,
+      'is_used': 0,
+    });
+
+    return {
+      'success': true,
+      'token': token,
+      'verification_method': verificationMethod,
+      'user_id': user.id,
+      'email': user.email,
+      'phone': user.phone,
+      'name': user.name,
+    };
+  }
+
+  // Verify a reset token
+  Future<Map<String, dynamic>> verifyResetToken(
+    String emailOrPhone,
+    String token,
+  ) async {
+    Database db = await database;
+    final now = DateTime.now().toIso8601String();
+
+    // Find the token
+    List<Map<String, dynamic>> tokens = await db.query(
+      'reset_tokens',
+      where:
+          '(email = ? OR phone = ?) AND token = ? AND is_used = 0 AND expiry_time > ?',
+      whereArgs: [emailOrPhone, emailOrPhone, token, now],
+    );
+
+    if (tokens.isEmpty) {
+      return {
+        'success': false,
+        'message': 'Invalid or expired verification code',
+      };
+    }
+
+    // Token is valid
+    return {
+      'success': true,
+      'user_id': tokens.first['user_id'],
+      'verification_method': tokens.first['verification_method'],
+    };
+  }
+
+  // Reset the password
+  Future<bool> resetPassword(int userId, String newPassword) async {
+    Database db = await database;
+
+    // Mark all tokens for this user as used
+    await db.update(
+      'reset_tokens',
+      {'is_used': 1},
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
+
+    // Update the password
+    int count = await db.update(
+      'users',
+      {'password': newPassword},
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+
+    return count > 0;
+  }
+
+  // Check if a reset token exists and is valid
+  Future<bool> checkResetTokenExists(int userId) async {
+    Database db = await database;
+    final now = DateTime.now().toIso8601String();
+
+    List<Map<String, dynamic>> tokens = await db.query(
+      'reset_tokens',
+      where: 'user_id = ? AND is_used = 0 AND expiry_time > ?',
+      whereArgs: [userId, now],
+    );
+
+    return tokens.isNotEmpty;
+  }
+  // Add this method to your DatabaseHelper class
+Future<void> ensureResetTokensTableExists() async {
+  final db = await database;
+  
+  try {
+    // Check if table exists
+    var tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='reset_tokens'");
+    
+    if (tables.isEmpty) {
+      print("Creating reset_tokens table");
+      
+      // Create the table if it doesn't exist
+      await db.execute('''
+        CREATE TABLE reset_tokens(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          email TEXT NOT NULL,
+          phone TEXT NOT NULL,
+          token TEXT NOT NULL,
+          verification_method TEXT NOT NULL,
+          expiry_time TIMESTAMP NOT NULL,
+          is_used INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+      ''');
+      
+      print("reset_tokens table created successfully");
+    } else {
+      print("reset_tokens table already exists");
+    }
+  } catch (e) {
+    print("Error ensuring reset_tokens table exists: $e");
+  }
+}
+
 }
