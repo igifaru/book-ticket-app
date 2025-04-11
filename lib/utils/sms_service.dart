@@ -1,5 +1,4 @@
 // lib/utils/sms_service.dart
-import 'package:flutter/material.dart';
 
 class SMSService {
   // For a real implementation, use a proper SMS service API like Twilio or Africa's Talking

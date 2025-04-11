@@ -146,17 +146,18 @@ class NotificationService {
 
       // Filter for new bookings in the last hour that need notifications
       final now = DateTime.now();
-      final recentBookings = bookings.where((booking) {
-        if (booking.createdAt == null) return false;
+      final recentBookings =
+          bookings.where((booking) {
+            if (booking.createdAt == null) return false;
 
-        final bookingTime = DateTime.parse(booking.createdAt!);
-        final timeDifference = now.difference(bookingTime);
+            final bookingTime = DateTime.parse(booking.createdAt!);
+            final timeDifference = now.difference(bookingTime);
 
-        // Only process bookings from the last hour that have Pending status
-        return timeDifference.inHours <= 1 &&
-            booking.bookingStatus == 'Pending' &&
-            !booking.notificationSent;
-      }).toList();
+            // Only process bookings from the last hour that have Pending status
+            return timeDifference.inHours <= 1 &&
+                booking.bookingStatus == 'Pending' &&
+                !booking.notificationSent;
+          }).toList();
 
       // Create notifications for new bookings
       for (var booking in recentBookings) {
@@ -192,10 +193,7 @@ class NotificationService {
         );
 
         // Mark booking as notified
-        await _databaseHelper.updateBookingNotificationStatus(
-          booking.id,
-          true,
-        );
+        await _databaseHelper.updateBookingNotificationStatus(booking.id, true);
       }
     } catch (e) {
       debugPrint('Error checking for new bookings: $e');
@@ -209,7 +207,10 @@ class NotificationService {
   }
 
   // Sanitize notification message
-  Future<String> _sanitizeNotificationMessage(String message, int? userId) async {
+  Future<String> _sanitizeNotificationMessage(
+    String message,
+    int? userId,
+  ) async {
     // If message contains "Admin User" and we have a userId, try to get the real name
     if (message.contains('Admin User') && userId != null) {
       try {
@@ -230,7 +231,7 @@ class NotificationService {
     else if (message.contains('Admin User')) {
       return message.replaceAll('Admin User', 'Customer');
     }
-    
+
     return message;
   }
 
@@ -309,7 +310,9 @@ class NotificationService {
             final user = await _databaseHelper.getUserById(
               notification.userId!,
             );
-            if (user != null && user.name.isNotEmpty && user.name != "Admin User") {
+            if (user != null &&
+                user.name.isNotEmpty &&
+                user.name != "Admin User") {
               final updatedMessage = notification.message.replaceAll(
                 'Admin User',
                 user.name,
@@ -326,7 +329,7 @@ class NotificationService {
                 'Admin User',
                 'User #${notification.userId}',
               );
-              
+
               await updateNotificationMessage(notification.id, updatedMessage);
               notification.message = updatedMessage;
             }
@@ -341,7 +344,7 @@ class NotificationService {
             'Admin User',
             'Customer',
           );
-          
+
           await updateNotificationMessage(notification.id, updatedMessage);
           notification.message = updatedMessage;
         }
@@ -404,8 +407,9 @@ class NotificationService {
     required String origin,
     required String destination,
   }) async {
-    if (!_enableNotifications || !_enableBookingConfirmation)
+    if (!_enableNotifications || !_enableBookingConfirmation) {
       return Future.error('Notifications disabled');
+    }
 
     // IMPORTANT: Always get the actual user name from the database
     String displayName;
@@ -439,8 +443,9 @@ class NotificationService {
     required double amount,
     String currency = 'RWF',
   }) async {
-    if (!_enableNotifications || !_enablePaymentReminders)
+    if (!_enableNotifications || !_enablePaymentReminders) {
       return Future.error('Notifications disabled');
+    }
 
     // Get the actual user name for payment notifications too
     String displayName;
@@ -475,8 +480,9 @@ class NotificationService {
     required String destination,
     required DateTime travelDate,
   }) async {
-    if (!_enableNotifications || !_enableBookingConfirmation)
+    if (!_enableNotifications || !_enableBookingConfirmation) {
       return Future.error('Notifications disabled');
+    }
 
     final title = 'Booking Confirmed';
     final message =
@@ -498,8 +504,9 @@ class NotificationService {
     required double amount,
     String currency = 'RWF',
   }) async {
-    if (!_enableNotifications || !_enablePaymentReminders)
+    if (!_enableNotifications || !_enablePaymentReminders) {
       return Future.error('Notifications disabled');
+    }
 
     final title = 'Payment Confirmed';
     final message =
@@ -580,20 +587,21 @@ class NotificationService {
   Future<void> fixExistingNotifications() async {
     try {
       final db = await _databaseHelper.database;
-      
+
       // Get all users except Admin User to have a list of real names
       final users = await _databaseHelper.getAllUsers();
-      final realUsers = users.where((user) => user.name != 'Admin User').toList();
-      
+      final realUsers =
+          users.where((user) => user.name != 'Admin User').toList();
+
       if (realUsers.isEmpty) {
         debugPrint('No real users found to fix notifications');
         // Still attempt to replace "Admin User" with "System Administrator"
         await db.rawUpdate(
-          "UPDATE notifications SET message = REPLACE(message, 'Admin User', 'System Administrator')"
+          "UPDATE notifications SET message = REPLACE(message, 'Admin User', 'System Administrator')",
         );
         return;
       }
-      
+
       // Default to the first real user if we can't determine the actual user
       final defaultRealUser = realUsers.first;
 
@@ -614,62 +622,74 @@ class NotificationService {
         final String message = notification['message'];
         final int? userId = notification['userId'];
         String updatedMessage = message;
-        
+
         // Try several approaches to find the correct user
-        
+
         // APPROACH 1: If notification has userId, use it directly
         if (userId != null) {
           try {
             final user = await _databaseHelper.getUserById(userId);
-            if (user != null && user.name.isNotEmpty && user.name != 'Admin User') {
+            if (user != null &&
+                user.name.isNotEmpty &&
+                user.name != 'Admin User') {
               updatedMessage = message.replaceAll('Admin User', user.name);
             }
           } catch (e) {
             debugPrint('Error getting user by ID for notification #$id: $e');
           }
         }
-        
+
         // APPROACH 2: If message is a booking notification, try to extract location info
-        if (message.contains('booked a ticket from') && updatedMessage == message) {
+        if (message.contains('booked a ticket from') &&
+            updatedMessage == message) {
           try {
-            final regex = RegExp(r'Admin User booked a ticket from (\w+) to (\w+)');
+            final regex = RegExp(
+              r'Admin User booked a ticket from (\w+) to (\w+)',
+            );
             final match = regex.firstMatch(message);
-            
+
             if (match != null) {
               final fromLocation = match.group(1);
               final toLocation = match.group(2);
-              
+
               // Find bookings with matching locations
               final bookings = await _databaseHelper.getAllBookings();
-              final matchingBookings = bookings.where(
-                (booking) => 
-                  booking.fromLocation == fromLocation && 
-                  booking.toLocation == toLocation
-              ).toList();
-              
+              final matchingBookings =
+                  bookings
+                      .where(
+                        (booking) =>
+                            booking.fromLocation == fromLocation &&
+                            booking.toLocation == toLocation,
+                      )
+                      .toList();
+
               if (matchingBookings.isNotEmpty) {
                 // Use most recent matching booking
                 final booking = matchingBookings.first;
                 final user = await _databaseHelper.getUserById(booking.userId);
-                
-                if (user != null && user.name.isNotEmpty && user.name != 'Admin User') {
+
+                if (user != null &&
+                    user.name.isNotEmpty &&
+                    user.name != 'Admin User') {
                   updatedMessage = message.replaceAll('Admin User', user.name);
                 }
               }
             }
           } catch (e) {
-            debugPrint('Error matching booking locations for notification #$id: $e');
+            debugPrint(
+              'Error matching booking locations for notification #$id: $e',
+            );
           }
         }
-        
+
         // APPROACH 3: If still using Admin User, use default real user
         if (updatedMessage.contains('Admin User')) {
           updatedMessage = message.replaceAll(
-            'Admin User', 
-            defaultRealUser.name
+            'Admin User',
+            defaultRealUser.name,
           );
         }
-        
+
         // Only update if we actually changed something
         if (updatedMessage != message) {
           try {
@@ -679,7 +699,9 @@ class NotificationService {
               where: 'id = ?',
               whereArgs: [id],
             );
-            debugPrint('Fixed notification #$id: "$message" -> "$updatedMessage"');
+            debugPrint(
+              'Fixed notification #$id: "$message" -> "$updatedMessage"',
+            );
           } catch (e) {
             debugPrint('Error updating notification #$id: $e');
           }

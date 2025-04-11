@@ -1,19 +1,19 @@
 // lib/screens/auth/forgot_password_screen.dart
 import 'package:flutter/material.dart';
 import 'package:tickiting/screens/auth/verify_reset_code_screen.dart';
-import 'package:tickiting/utils/theme.dart';
-import 'package:tickiting/utils/database_helper.dart';
-import 'package:tickiting/utils/email_service.dart';
-import 'package:tickiting/utils/sms_service.dart';
+//import 'package:tickiting/utils/theme.dart';
+//import 'package:tickiting/utils/database_helper.dart';
+//import 'package:tickiting/utils/email_service.dart';
+//import 'package:tickiting/utils/sms_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({Key? key}) : super(key: key);
+  const ForgotPasswordScreen({super.key});
 
   @override
-  _ForgotPasswordScreenState createState() => _ForgotPasswordScreenState();
+  ForgotPasswordScreenState createState() => ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   // Use a different name for the form key to avoid conflicts
   final GlobalKey<FormState> forgotPasswordFormKey = GlobalKey<FormState>();
   final TextEditingController emailOrPhoneController = TextEditingController();
@@ -39,17 +39,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       try {
         // Simulate the API call for now
         await Future.delayed(const Duration(seconds: 2));
-        
+
         // For demonstration purposes, always succeed in development
-        final bool sendSuccess = true;
         final Map<String, dynamic> result = {
           'success': true,
           'user_id': 1,
           'email': emailOrPhoneController.text,
           'phone': '1234567890',
           'name': 'Test User',
-          'token': '123456'
+          'token': '123456',
         };
+        final bool sendSuccess = result['success'] ?? false;
 
         setState(() {
           isLoading = false;
@@ -60,17 +60,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => VerifyResetCodeScreen(
-                  userId: result['user_id'],
-                  emailOrPhone: emailOrPhoneController.text,
-                  verificationMethod: verificationMethod,
-                ),
+                builder:
+                    (context) => VerifyResetCodeScreen(
+                      userId: result['user_id'],
+                      emailOrPhone: emailOrPhoneController.text,
+                      verificationMethod: verificationMethod,
+                    ),
               ),
             );
           }
-        } else {
+        } else if (mounted) {
           setState(() {
-            errorMessage = 'Failed to send verification code. Please try again.';
+            errorMessage =
+                'Failed to send verification code. Please try again.';
           });
         }
       } catch (e) {
@@ -106,7 +108,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 24),
-            
+
             // Verification method selector
             Container(
               padding: const EdgeInsets.all(12),
@@ -117,8 +119,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Verification Method', 
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Verification Method',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   Row(
                     children: [
                       Expanded(
@@ -154,7 +158,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 16),
             if (errorMessage.isNotEmpty)
               Container(
@@ -170,20 +174,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   style: const TextStyle(color: Colors.red),
                 ),
               ),
-              
+
             Form(
               key: forgotPasswordFormKey,
               child: Column(
                 children: [
                   TextFormField(
                     controller: emailOrPhoneController,
-                    keyboardType: verificationMethod == 'email'
-                        ? TextInputType.emailAddress
-                        : TextInputType.phone,
+                    keyboardType:
+                        verificationMethod == 'email'
+                            ? TextInputType.emailAddress
+                            : TextInputType.phone,
                     decoration: InputDecoration(
-                      labelText: verificationMethod == 'email' 
-                        ? 'Email' 
-                        : 'Phone Number',
+                      labelText:
+                          verificationMethod == 'email'
+                              ? 'Email'
+                              : 'Phone Number',
                       prefixIcon: Icon(
                         verificationMethod == 'email'
                             ? Icons.email
@@ -197,13 +203,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your ${verificationMethod == 'email' ? 'email' : 'phone number'}';
                       }
-                      
+
                       if (verificationMethod == 'email' &&
-                          !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                              .hasMatch(value)) {
+                          !RegExp(
+                            r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                          ).hasMatch(value)) {
                         return 'Please enter a valid email';
                       }
-                      
+
                       return null;
                     },
                   ),
@@ -213,16 +220,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     height: 48,
                     child: ElevatedButton(
                       onPressed: isLoading ? null : sendVerificationCode,
-                      child: isLoading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text('Send Verification Code'),
+                      child:
+                          isLoading
+                              ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                              : const Text('Send Verification Code'),
                     ),
                   ),
                 ],

@@ -1,19 +1,22 @@
-// lib/screens/auth/reset_password_screen.dart
 import 'package:flutter/material.dart';
 import 'package:tickiting/screens/auth/login_screen.dart';
 import 'package:tickiting/utils/theme.dart';
 import 'package:tickiting/utils/database_helper.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
 class ResetPasswordScreen extends StatefulWidget {
   final int userId;
 
-  const ResetPasswordScreen({
-    super.key,
-    required this.userId,
-  });
+  const ResetPasswordScreen({super.key, required this.userId});
 
   @override
   State<ResetPasswordScreen> createState() => ResetPasswordScreenState();
+}
+
+// Securely hash the password
+String _hashPassword(String password) {
+  return sha256.convert(utf8.encode(password)).toString();
 }
 
 class ResetPasswordScreenState extends State<ResetPasswordScreen> {
@@ -42,20 +45,25 @@ class ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
       try {
         // Check if token is still valid
-        final tokenExists = await DatabaseHelper().checkResetTokenExists(widget.userId);
+        final tokenExists = await DatabaseHelper().verifyResetTokenByUserId(
+          widget.userId,
+          '123456', // Replace with the actual token entered by the user
+        );
 
         if (!tokenExists) {
           setState(() {
             _isLoading = false;
-            _errorMessage = 'Your verification code has expired. Please request a new code.';
+            _errorMessage =
+                'Your verification code has expired. Please request a new code.';
           });
           return;
         }
 
         // Reset the password
+        final hashedPassword = _hashPassword(_passwordController.text);
         final success = await DatabaseHelper().resetPassword(
           widget.userId,
-          _passwordController.text,
+          hashedPassword,
         );
 
         setState(() {
@@ -181,7 +189,8 @@ class ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           ),
                           onPressed: () {
                             setState(() {
-                              _obscureConfirmPassword = !_obscureConfirmPassword;
+                              _obscureConfirmPassword =
+                                  !_obscureConfirmPassword;
                             });
                           },
                         ),
@@ -202,20 +211,21 @@ class ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _resetPassword,
-                        child: _isLoading
-                            ? const CircularProgressIndicator(
-                              color: Colors.white,
-                            )
-                            : const Text(
-                              'Reset Password',
-                              style: TextStyle(fontSize: 18),
-                            ),
+                        child:
+                            _isLoading
+                                ? const CircularProgressIndicator(
+                                  color: Colors.white,
+                                )
+                                : const Text(
+                                  'Reset Password',
+                                  style: TextStyle(fontSize: 18),
+                                ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ] else 
+            ] else
               // Success message
               Center(
                 child: Column(

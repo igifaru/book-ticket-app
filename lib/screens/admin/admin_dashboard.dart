@@ -758,7 +758,7 @@ class AdminDashboardHome extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     // Limit width to prevent overflow
-                    Container(
+                    SizedBox(
                       width:
                           constraints.maxWidth * 0.65, // Limit to 65% of width
                       child: Column(

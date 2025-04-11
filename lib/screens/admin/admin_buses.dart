@@ -426,7 +426,7 @@ class _AdminBusesState extends State<AdminBuses> {
           builder: (context, setStateDialog) {
             return AlertDialog(
               title: Text(bus == null ? 'Add New Bus' : 'Edit Bus'),
-              content: Container(
+              content: SizedBox(
                 width: MediaQuery.of(context).size.width * 0.8,
                 height: MediaQuery.of(context).size.height * 0.8,
                 child: Form(
@@ -1048,7 +1048,7 @@ class _AdminBusesState extends State<AdminBuses> {
           builder: (context, setStateDialog) {
             return AlertDialog(
               title: const Text('Manage Locations'),
-              content: Container(
+              content: SizedBox(
                 width: MediaQuery.of(context).size.width * 0.7,
                 height: MediaQuery.of(context).size.height * 0.6,
                 child: Column(

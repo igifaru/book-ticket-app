@@ -7,6 +7,8 @@ import 'package:tickiting/models/user.dart';
 import 'package:tickiting/models/bus.dart';
 import 'package:tickiting/models/booking.dart';
 import 'dart:math';
+//import 'package:tickiting/utils/email_helper.dart';
+import 'dart:developer';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -194,7 +196,7 @@ class DatabaseHelper {
       );
     } catch (e) {
       // Column might already exist
-      print("Error adding notification_sent column: $e");
+      print("Error adding notification_sent column: ${e.toString()}");
     }
   }
   // Add this method to the DatabaseHelper class in lib/utils/database_helper.dart
@@ -1196,7 +1198,13 @@ class DatabaseHelper {
 
     // Find user by email or phone
     if (verificationMethod == 'email') {
-      user = await getUserByEmail(emailOrPhone);
+      if (user != null) {
+        // Ensure token is declared and assigned before use
+        final token = (Random().nextInt(900000) + 100000).toString();
+        await sendEmail(user.email, token);
+      } else {
+        print("User or email is null, cannot send email.");
+      }
     } else {
       // Assuming you have a method to get user by phone
       List<Map<String, dynamic>> maps = await db.query(
@@ -1218,7 +1226,7 @@ class DatabaseHelper {
     }
 
     // Generate a 6-digit random token
-    final random = new Random();
+    final random = Random();
     String token = '';
     for (int i = 0; i < 6; i++) {
       token += random.nextInt(10).toString();
@@ -1285,53 +1293,84 @@ class DatabaseHelper {
 
   // Reset the password
   Future<bool> resetPassword(int userId, String newPassword) async {
-    Database db = await database;
+    final db = await database;
 
-    // Mark all tokens for this user as used
-    await db.update(
-      'reset_tokens',
-      {'is_used': 1},
-      where: 'user_id = ?',
-      whereArgs: [userId],
-    );
-
-    // Update the password
-    int count = await db.update(
+    // Update the user's password
+    final result = await db.update(
       'users',
       {'password': newPassword},
       where: 'id = ?',
       whereArgs: [userId],
     );
 
-    return count > 0;
+    // Mark all tokens for the user as used
+    await markTokenAsUsed(userId);
+
+    return result > 0;
+  }
+  // Create a password reset token
+
+  Future<bool> createPasswordResetTokenForUser(
+    int userId,
+    String emailOrPhone,
+    String verificationMethod,
+  ) async {
+    final db = await database;
+
+    // Generate a random 6-digit token
+    final random = Random();
+    final token = (random.nextInt(900000) + 100000).toString();
+
+    // Set token expiry time (e.g., 15 minutes from now)
+    final expiryTime =
+        DateTime.now().add(const Duration(minutes: 15)).toIso8601String();
+
+    // Delete any existing tokens for the user
+    await db.delete('reset_tokens', where: 'user_id = ?', whereArgs: [userId]);
+
+    // Insert the new token
+    final result = await db.insert('reset_tokens', {
+      'user_id': userId,
+      'email': emailOrPhone,
+      'phone': emailOrPhone,
+      'token': token,
+      'verification_method': verificationMethod,
+      'expiry_time': expiryTime,
+      'is_used': 0,
+    });
+
+    return result > 0;
   }
 
   // Check if a reset token exists and is valid
-  Future<bool> checkResetTokenExists(int userId) async {
-    Database db = await database;
-    final now = DateTime.now().toIso8601String();
+  Future<bool> verifyResetTokenByUserId(int userId, String token) async {
+    final db = await database;
 
-    List<Map<String, dynamic>> tokens = await db.query(
+    // Query the reset_tokens table
+    final result = await db.query(
       'reset_tokens',
-      where: 'user_id = ? AND is_used = 0 AND expiry_time > ?',
-      whereArgs: [userId, now],
+      where: 'user_id = ? AND token = ? AND is_used = 0 AND expiry_time > ?',
+      whereArgs: [userId, token, DateTime.now().toIso8601String()],
     );
 
-    return tokens.isNotEmpty;
+    return result.isNotEmpty;
   }
+
   // Add this method to your DatabaseHelper class
-Future<void> ensureResetTokensTableExists() async {
-  final db = await database;
-  
-  try {
-    // Check if table exists
-    var tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='reset_tokens'");
-    
-    if (tables.isEmpty) {
-      print("Creating reset_tokens table");
-      
-      // Create the table if it doesn't exist
-      await db.execute('''
+  Future<void> ensureResetTokensTableExists() async {
+    final db = await database;
+
+    try {
+      // Check if table exists
+      var tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='reset_tokens'",
+      );
+
+      if (tables.isEmpty) {
+        print("Creating reset_tokens table");
+
+        // Create the table if it doesn't exist
+        await db.execute('''
         CREATE TABLE reset_tokens(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id INTEGER NOT NULL,
@@ -1345,14 +1384,29 @@ Future<void> ensureResetTokensTableExists() async {
           FOREIGN KEY(user_id) REFERENCES users(id)
         )
       ''');
-      
-      print("reset_tokens table created successfully");
-    } else {
-      print("reset_tokens table already exists");
-    }
-  } catch (e) {
-    print("Error ensuring reset_tokens table exists: $e");
-  }
-}
 
+        print("reset_tokens table created successfully");
+      } else {
+        print("reset_tokens table already exists");
+      }
+    } catch (e) {
+      print("Error ensuring reset_tokens table exists: $e");
+    }
+  }
+
+  Future<void> markTokenAsUsed(int userId) async {
+    final db = await database;
+
+    await db.update(
+      'reset_tokens',
+      {'is_used': 1},
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  Future<void> sendEmail(String email, String token) async {
+    // Replace this with your email-sending logic
+    print('Sending email to $email with token: $token');
+  }
 }

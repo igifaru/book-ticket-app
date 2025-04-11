@@ -1,4 +1,3 @@
-// lib/screens/auth/verify_reset_code_screen.dart
 import 'package:flutter/material.dart';
 import 'package:tickiting/screens/auth/reset_password_screen.dart';
 import 'package:tickiting/utils/theme.dart';
@@ -27,10 +26,7 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
     6,
     (index) => TextEditingController(),
   );
-  final List<FocusNode> _focusNodes = List.generate(
-    6,
-    (index) => FocusNode(),
-  );
+  final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
 
   bool _isLoading = false;
   String _errorMessage = '';
@@ -57,7 +53,7 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
   }
 
   void _startTimer() {
-    _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         if (_remainingSeconds > 0) {
           _remainingSeconds--;
@@ -98,9 +94,8 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => ResetPasswordScreen(
-                  userId: widget.userId,
-                ),
+                builder:
+                    (context) => ResetPasswordScreen(userId: widget.userId),
               ),
             );
           }
@@ -193,10 +188,7 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
             const SizedBox(height: 5),
             Text(
               widget.emailOrPhone,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 30),
             if (_errorMessage.isNotEmpty)
@@ -260,14 +252,15 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _verifyCode,
-                      child: _isLoading
-                          ? const CircularProgressIndicator(
-                            color: Colors.white,
-                          )
-                          : const Text(
-                            'Verify Code',
-                            style: TextStyle(fontSize: 18),
-                          ),
+                      child:
+                          _isLoading
+                              ? const CircularProgressIndicator(
+                                color: Colors.white,
+                              )
+                              : const Text(
+                                'Verify Code',
+                                style: TextStyle(fontSize: 18),
+                              ),
                     ),
                   ),
                 ],
@@ -285,9 +278,7 @@ class _VerifyResetCodeScreenState extends State<VerifyResetCodeScreen> {
                     _canResend
                         ? 'Resend Code'
                         : 'Resend in $_remainingSeconds s',
-                    style: TextStyle(
-                      color: _canResend ? null : Colors.grey,
-                    ),
+                    style: TextStyle(color: _canResend ? null : Colors.grey),
                   ),
                 ),
               ],

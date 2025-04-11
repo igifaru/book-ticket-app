@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:tickiting/services/notification_service.dart';
 import 'package:tickiting/utils/theme.dart';
 import 'package:tickiting/utils/database_helper.dart';
-import 'package:tickiting/models/booking.dart';
 
 class NotificationIcon extends StatefulWidget {
   final String recipient;
@@ -62,201 +61,209 @@ class _NotificationIconState extends State<NotificationIcon> {
     // Continue with showing the dialog
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.notifications, color: AppTheme.primaryColor),
-            const SizedBox(width: 10),
-            const Text('Notifications'),
-            const Spacer(),
-            if (_unreadCount > 0)
-              TextButton(
-                onPressed: () async {
-                  await _notificationService.markAllAsRead(
-                    recipient: widget.recipient,
-                    userId: widget.userId,
-                  );
-                  _loadUnreadCount();
-                  Navigator.pop(context);
-                },
-                child: const Text('Mark all as read'),
-              ),
-            // Add a button to clear all Admin User notifications if needed
-            TextButton(
-              onPressed: () async {
-                // First try to fix any remaining Admin User notifications
-                await _databaseHelper.replaceAdminUserInAllNotifications();
-                // If any still remain, clear them
-                await _databaseHelper.clearAdminUserNotifications();
-                _loadUnreadCount();
-                Navigator.pop(context);
-              },
-              child: const Text('Fix & Clear Invalid'),
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.notifications, color: AppTheme.primaryColor),
+                const SizedBox(width: 10),
+                const Text('Notifications'),
+                const Spacer(),
+                if (_unreadCount > 0)
+                  TextButton(
+                    onPressed: () async {
+                      await _notificationService.markAllAsRead(
+                        recipient: widget.recipient,
+                        userId: widget.userId,
+                      );
+                      _loadUnreadCount();
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Mark all as read'),
+                  ),
+                // Add a button to clear all Admin User notifications if needed
+                TextButton(
+                  onPressed: () async {
+                    // First try to fix any remaining Admin User notifications
+                    await _databaseHelper.replaceAdminUserInAllNotifications();
+                    // If any still remain, clear them
+                    await _databaseHelper.clearAdminUserNotifications();
+                    _loadUnreadCount();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Fix & Clear Invalid'),
+                ),
+              ],
             ),
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 400,
-          child: notifications.isEmpty
-            ? const Center(child: Text('No notifications'))
-            : ListView.builder(
-                itemCount: notifications.length,
-                itemBuilder: (context, index) {
-                  final notification = notifications[index];
-                  // Use the potentially updated message here
-                  return Card(
-                    color: notification.isRead ? null : Colors.blue[50],
-                    child: ListTile(
-                      leading: Icon(
-                        _getIconForType(notification.type),
-                        color: _getColorForType(notification.type),
-                      ),
-                      title: Text(
-                        notification.title,
-                        style: TextStyle(
-                          fontWeight:
-                              notification.isRead
-                                  ? FontWeight.normal
-                                  : FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(notification.message),
-                          Text(
-                            _formatTime(notification.time),
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Add an edit button to manually fix notifications if needed
-                          if (notification.message.contains("Admin User"))
-                            IconButton(
-                              icon: const Icon(
-                                Icons.edit,
-                                color: Colors.orange,
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child:
+                  notifications.isEmpty
+                      ? const Center(child: Text('No notifications'))
+                      : ListView.builder(
+                        itemCount: notifications.length,
+                        itemBuilder: (context, index) {
+                          final notification = notifications[index];
+                          // Use the potentially updated message here
+                          return Card(
+                            color: notification.isRead ? null : Colors.blue[50],
+                            child: ListTile(
+                              leading: Icon(
+                                _getIconForType(notification.type),
+                                color: _getColorForType(notification.type),
                               ),
-                              onPressed: () async {
-                                // Show dialog to manually fix the notification
-                                _showEditNotificationDialog(
-                                  context,
-                                  notification,
-                                );
+                              title: Text(
+                                notification.title,
+                                style: TextStyle(
+                                  fontWeight:
+                                      notification.isRead
+                                          ? FontWeight.normal
+                                          : FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(notification.message),
+                                  Text(
+                                    _formatTime(notification.time),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Add an edit button to manually fix notifications if needed
+                                  if (notification.message.contains(
+                                    "Admin User",
+                                  ))
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.edit,
+                                        color: Colors.orange,
+                                      ),
+                                      onPressed: () async {
+                                        // Show dialog to manually fix the notification
+                                        _showEditNotificationDialog(
+                                          context,
+                                          notification,
+                                        );
+                                      },
+                                    ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete),
+                                    onPressed: () async {
+                                      await _notificationService
+                                          .deleteNotification(notification.id);
+                                      _loadUnreadCount();
+                                      // Reload the list
+                                      if (mounted) {
+                                        Navigator.pop(context);
+                                        _showNotificationsDialog();
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                              onTap: () async {
+                                if (!notification.isRead) {
+                                  await _notificationService.markAsRead(
+                                    notification.id,
+                                  );
+                                  _loadUnreadCount();
+                                  // Reload the list
+                                  if (mounted) {
+                                    Navigator.pop(context);
+                                    _showNotificationsDialog();
+                                  }
+                                }
                               },
                             ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () async {
-                              await _notificationService
-                                  .deleteNotification(notification.id);
-                              _loadUnreadCount();
-                              // Reload the list
-                              if (mounted) {
-                                Navigator.pop(context);
-                                _showNotificationsDialog();
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                      onTap: () async {
-                        if (!notification.isRead) {
-                          await _notificationService.markAsRead(
-                            notification.id,
                           );
-                          _loadUnreadCount();
-                          // Reload the list
-                          if (mounted) {
-                            Navigator.pop(context);
-                            _showNotificationsDialog();
-                          }
-                        }
-                      },
-                    ),
-                  );
+                        },
+                      ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
                 },
+                child: const Text('Close'),
               ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Close'),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   // New method to check and update "Admin User" before displaying
-  Future<void> _updateNotificationsWithAdminUser(List<NotificationModel> notifications) async {
+  Future<void> _updateNotificationsWithAdminUser(
+    List<NotificationModel> notifications,
+  ) async {
     bool needsRefresh = false;
-    
+
     for (var notification in notifications) {
       if (notification.message.contains("Admin User")) {
         // Try to get user information
         if (notification.userId != null) {
           try {
-            final user = await _databaseHelper.getUserById(notification.userId!);
-            if (user != null && user.name.isNotEmpty && user.name != "Admin User") {
+            final user = await _databaseHelper.getUserById(
+              notification.userId!,
+            );
+            if (user != null &&
+                user.name.isNotEmpty &&
+                user.name != "Admin User") {
               final updatedMessage = notification.message.replaceAll(
                 "Admin User",
                 user.name,
               );
-              
+
               // Update in database
               await _notificationService.updateNotificationMessage(
                 notification.id,
                 updatedMessage,
               );
-              
+
               // Update in memory
               notification.message = updatedMessage;
               needsRefresh = true;
-            } 
-            else {
+            } else {
               // Fallback to User #ID
               final updatedMessage = notification.message.replaceAll(
                 "Admin User",
                 "User #${notification.userId}",
               );
-              
+
               await _notificationService.updateNotificationMessage(
                 notification.id,
                 updatedMessage,
               );
-              
+
               notification.message = updatedMessage;
               needsRefresh = true;
             }
           } catch (e) {
             print("Error updating notification in widget: $e");
           }
-        } 
-        else {
+        } else {
           // If no user ID, use generic "Customer"
           final updatedMessage = notification.message.replaceAll(
             "Admin User",
             "Customer",
           );
-          
+
           await _notificationService.updateNotificationMessage(
             notification.id,
             updatedMessage,
           );
-          
+
           notification.message = updatedMessage;
           needsRefresh = true;
         }
       }
     }
-    
+
     // Force UI refresh if needed
     if (needsRefresh && mounted) {
       setState(() {});
@@ -273,42 +280,43 @@ class _NotificationIconState extends State<NotificationIcon> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Notification'),
-        content: TextField(
-          controller: controller,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            hintText: 'Edit notification message',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              // Update the notification
-              await _notificationService.updateNotificationMessage(
-                notification.id,
-                controller.text,
-              );
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Edit Notification'),
+            content: TextField(
+              controller: controller,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'Edit notification message',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  // Update the notification
+                  await _notificationService.updateNotificationMessage(
+                    notification.id,
+                    controller.text,
+                  );
 
-              // Close both dialogs
-              Navigator.pop(context);
-              Navigator.pop(context);
+                  // Close both dialogs
+                  Navigator.pop(context);
+                  Navigator.pop(context);
 
-              // Reopen the notifications dialog with updated content
-              _showNotificationsDialog();
-            },
-            child: const Text('Save'),
+                  // Reopen the notifications dialog with updated content
+                  _showNotificationsDialog();
+                },
+                child: const Text('Save'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
