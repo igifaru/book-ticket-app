@@ -1,44 +1,72 @@
+import 'package:intl/intl.dart';
 
 class User {
-  int? id;
-  String name;
-  String email;
-  String password;
-  String phone;
-  String gender;
-  String? createdAt;
+  final int? id;
+  final String name;
+  final String email;
+  final String phone;
+  final String password;
+  final String role;
+  final String username;
+  final DateTime createdAt;
 
   User({
     this.id,
     required this.name,
     required this.email,
-    required this.password,
     required this.phone,
-    required this.gender,
-    this.createdAt,
-  });
+    required this.password,
+    this.role = 'user',
+    String? username,
+    DateTime? createdAt,
+  }) : username = username ?? email.split('@')[0],
+       createdAt = createdAt ?? DateTime.now();
+
+  factory User.fromMap(Map<String, dynamic> map) {
+    return User(
+      id: map['id'] as int?,
+      name: map['name'] as String,
+      email: map['email'] as String,
+      phone: map['phone'] as String,
+      password: map['password'] as String,
+      role: map['role'] as String? ?? 'user',
+      username: map['username'] as String?,
+      createdAt: DateTime.parse(map['createdAt'] as String),
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
       'name': name,
       'email': email,
-      'password': password,
       'phone': phone,
-      'gender': gender,
-      'created_at': createdAt,
+      'password': password,
+      'role': role,
+      'username': username,
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 
-  factory User.fromMap(Map<String, dynamic> map) {
+  User copyWith({
+    int? id,
+    String? name,
+    String? email,
+    String? phone,
+    String? password,
+    String? role,
+    String? username,
+    DateTime? createdAt,
+  }) {
     return User(
-      id: map['id'],
-      name: map['name'],
-      email: map['email'],
-      password: map['password'],
-      phone: map['phone'] ?? '',  // Handle possible null value
-      gender: map['gender'],
-      createdAt: map['created_at'],
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      password: password ?? this.password,
+      role: role ?? this.role,
+      username: username ?? this.username,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

@@ -1,699 +1,525 @@
-// lib/screens/ticket_screen.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Add this import for clipboard
-import 'package:tickiting/models/bus.dart';
-import 'package:tickiting/models/booking.dart';
-import 'package:tickiting/utils/theme.dart';
-import 'package:tickiting/utils/database_helper.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:tickiting/screens/home_screen.dart';
-// Remove or comment this line: import 'package:share_plus/share_plus.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import '../models/booking.dart';
+import '../models/payment.dart';
+import '../utils/date_formatter.dart';
+import '../screens/user/user_dashboard.dart';
 
-class TicketScreen extends StatefulWidget {
-  final bool isNewTicket;
-  final Bus? bus;
-  final String? from;
-  final String? to;
-  final DateTime? date;
-  final int? passengers;
-  final List<String>? seatNumbers;
-  final String? bookingId;
+class TicketScreen extends StatelessWidget {
+  final Booking booking;
+  final Payment payment;
 
   const TicketScreen({
     super.key,
-    this.isNewTicket = false,
-    this.bus,
-    this.from,
-    this.to,
-    this.date,
-    this.passengers,
-    this.seatNumbers,
-    this.bookingId,
+    required this.booking,
+    required this.payment,
   });
 
-  @override
-  _TicketScreenState createState() => _TicketScreenState();
-}
-
-class _TicketScreenState extends State<TicketScreen> {
-  List<Booking> _bookings = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadBookings();
-  }
-
-  Future<void> _loadBookings() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+  Future<void> _shareTicket(BuildContext context) async {
     try {
-      // Load all bookings for the current user
-      // In a real app, you'd pass the current user's ID
-      final bookings = await DatabaseHelper().getUserBookings(1);
+      debugPrint('TicketScreen: Sharing ticket details...');
+      final text = '''
+🎫 Bus Ticket Details
+------------------
+Booking ID: ${booking.id}
+From: ${booking.fromLocation}
+To: ${booking.toLocation}
+Journey Date: ${DateFormatter.format(booking.journeyDate)}
+Seats: ${booking.numberOfSeats}
+Amount Paid: ₹${booking.totalAmount}
+Status: Confirmed
 
-      setState(() {
-        _bookings = bookings;
-        _isLoading = false;
-      });
+Please show this ticket at the counter for verification.
+''';
+
+      await Share.share(text, subject: 'Bus Ticket Details');
+      debugPrint('TicketScreen: Ticket details shared successfully');
     } catch (e) {
-      print('Error loading bookings: $e');
-      setState(() {
-        _isLoading = false;
-      });
+      debugPrint('TicketScreen: Error sharing ticket: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sharing ticket: $e')),
+      );
     }
   }
 
-  void _shareTicket(Ticket ticket) {
+  Future<File> _generatePdf() async {
+    debugPrint('TicketScreen: Generating PDF ticket...');
+    final pdf = pw.Document();
+
     try {
-      // Create ticket text
-      String ticketDetails =
-          "Rwanda Bus Ticket\n\n"
-          "Ticket ID: ${ticket.id}\n"
-          "Bus: ${ticket.busName}\n"
-          "Route: ${ticket.from} to ${ticket.to}\n"
-          "Date: ${ticket.date.day}/${ticket.date.month}/${ticket.date.year}\n"
-          "Time: ${ticket.departureTime}\n"
-          "Seats: ${ticket.seatNumbers.join(', ')}\n"
-          "Passengers: ${ticket.passengers}\n\n"
-          "Please present this ticket at the bus station.";
+      // Create QR code data
+      debugPrint('TicketScreen: Generating QR code...');
+      final qrCode = await _generateQrCode('TICKET:${booking.id}');
+      debugPrint('TicketScreen: QR code generated successfully');
 
-      // Show a dialog with copy option
-      showDialog(
-        context: context,
-        barrierDismissible: false, // Prevent dismissing by tapping outside
-        builder:
-            (dialogContext) => AlertDialog(
-              title: const Text('Share Ticket'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Your ticket details:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(5),
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return pw.Padding(
+              padding: const pw.EdgeInsets.all(20),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Header with QR Code
+                  pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Expanded(
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'BUS TICKET',
+                              style: pw.TextStyle(
+                                fontSize: 24,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                            pw.SizedBox(height: 4),
+                            pw.Text(
+                              'Booking ID: ${booking.id}',
+                              style: const pw.TextStyle(
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Text(ticketDetails),
+                      qrCode != null
+                          ? pw.Image(qrCode, width: 80, height: 80)
+                          : pw.Container(),
+                    ],
+                  ),
+                  pw.SizedBox(height: 20),
+
+                  // Ticket Details Box
+                  pw.Container(
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(width: 1),
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
                     ),
-                  ],
-                ),
+                    padding: const pw.EdgeInsets.all(16),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        _buildPdfRow('From', booking.fromLocation),
+                        _buildPdfDivider(),
+                        _buildPdfRow('To', booking.toLocation),
+                        _buildPdfDivider(),
+                        _buildPdfRow('Journey Date', DateFormatter.format(booking.journeyDate)),
+                        _buildPdfDivider(),
+                        _buildPdfRow('Departure Time', booking.travelDate.toString().split(' ')[1].substring(0, 5)),
+                        _buildPdfDivider(),
+                        _buildPdfRow('Number of Seats', booking.numberOfSeats.toString()),
+                        _buildPdfDivider(),
+                        _buildPdfRow('Seat Number', booking.seatNumber ?? 'Not Assigned'),
+                        _buildPdfDivider(),
+                        _buildPdfRow('Amount Paid', '₹${booking.totalAmount}'),
+                        _buildPdfDivider(),
+                        _buildPdfRow('Payment Status', 'Confirmed'),
+                        _buildPdfDivider(),
+                        _buildPdfRow('Transaction ID', payment.transactionId),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 20),
+
+                  // Important Information
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(16),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'Important Information:',
+                          style: pw.TextStyle(
+                            fontSize: 14,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        pw.SizedBox(height: 8),
+                        pw.Text(
+                          '• Please arrive at least 15 minutes before departure\n'
+                          '• Show this ticket at the counter for verification\n'
+                          '• Carry a valid ID proof while traveling\n'
+                          '• No refund on cancellation',
+                          style: const pw.TextStyle(
+                            fontSize: 12,
+                            lineSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    // Close the dialog
-                    Navigator.pop(dialogContext);
-
-                    // Copy to clipboard
-                    await Clipboard.setData(ClipboardData(text: ticketDetails));
-
-                    // Show confirmation
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Ticket copied to clipboard'),
-                        backgroundColor: Colors.green,
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-
-                    // Force navigation directly to HomeScreen
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const HomeScreen(),
-                      ),
-                      (route) => false, // This removes all previous routes
-                    );
-                  },
-                  child: const Text('Copy & Return Home'),
-                ),
-              ],
-            ),
+            );
+          },
+        ),
       );
+
+      debugPrint('TicketScreen: Getting application directory...');
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/ticket_${booking.id}.pdf');
+      
+      debugPrint('TicketScreen: Saving PDF file...');
+      await file.writeAsBytes(await pdf.save());
+      debugPrint('TicketScreen: PDF saved successfully at ${file.path}');
+      
+      return file;
     } catch (e) {
-      print("Error in share dialog: $e");
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      debugPrint('TicketScreen: Error generating PDF: $e');
+      throw Exception('Failed to generate PDF ticket: $e');
+    }
+  }
+
+  pw.Widget _buildPdfRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 120,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+          pw.Text(': '),
+          pw.Expanded(child: pw.Text(value)),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildPdfDivider() {
+    return pw.Container(
+      margin: const pw.EdgeInsets.symmetric(vertical: 8),
+      height: 1,
+      color: PdfColors.grey300,
+    );
+  }
+
+  Future<pw.ImageProvider?> _generateQrCode(String data) async {
+    try {
+      final qrPainter = QrPainter(
+        data: data,
+        version: QrVersions.auto,
+        color: Colors.black,
+        emptyColor: Colors.white,
+      );
+      
+      final qrImage = await qrPainter.toImageData(200);
+      if (qrImage != null) {
+        return pw.MemoryImage(qrImage.buffer.asUint8List());
+      }
+    } catch (e) {
+      debugPrint('Error generating QR code: $e');
+    }
+    return null;
+  }
+
+  Future<void> _downloadTicket(BuildContext context) async {
+    try {
+      debugPrint('TicketScreen: Starting ticket download...');
+      final File pdfFile = await _generatePdf();
+      
+      debugPrint('TicketScreen: Showing success message...');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Ticket saved as PDF: ${pdfFile.path}'),
+              ),
+            ],
+          ),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Share',
+            onPressed: () async {
+              debugPrint('TicketScreen: Sharing PDF file...');
+              await Share.shareXFiles(
+                [XFile(pdfFile.path)],
+                subject: 'Bus Ticket Details',
+              );
+            },
+          ),
+        ),
+      );
+
+      debugPrint('TicketScreen: Opening print dialog...');
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async {
+          return await pdfFile.readAsBytes();
+        },
+        name: 'Bus Ticket - ${booking.id}',
+      );
+      debugPrint('TicketScreen: Print dialog closed');
+    } catch (e) {
+      debugPrint('TicketScreen: Error in download process: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error downloading ticket: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // If this is a new ticket, use the passed data
-    if (widget.isNewTicket &&
-        widget.bus != null &&
-        widget.from != null &&
-        widget.to != null &&
-        widget.date != null &&
-        widget.passengers != null &&
-        widget.seatNumbers != null &&
-        widget.bookingId != null) {
-      final ticket = Ticket(
-        id: widget.bookingId!,
-        busName: widget.bus!.name,
-        from: widget.from!,
-        to: widget.to!,
-        date: widget.date!,
-        departureTime: widget.bus!.departureTime,
-        passengers: widget.passengers!,
-        seatNumbers: widget.seatNumbers!,
-        status: 'Confirmed',
-        qrCode: widget.bookingId!, // Just use the booking ID for QR data
-      );
-
-      return _buildTicketDetailsScreen(context, ticket);
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Tickets'),
-        backgroundColor: AppTheme.primaryColor,
-      ),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _bookings.isEmpty
-              ? const Center(
-                child: Text(
-                  'No tickets found. Book a trip to get started!',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-              )
-              : RefreshIndicator(
-                onRefresh: _loadBookings,
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(15),
-                  itemCount: _bookings.length,
-                  itemBuilder: (context, index) {
-                    final booking = _bookings[index];
-                    return _buildTicketCard(
-                      context,
-                      _convertBookingToTicket(booking),
-                    );
-                  },
-                ),
-              ),
-    );
-  }
-
-  // Helper to convert Booking to Ticket (UI model)
-  Ticket _convertBookingToTicket(Booking booking) {
-    // Parse date from string format "dd/mm/yyyy"
-    final dateParts = booking.travelDate.split('/');
-    final date = DateTime(
-      int.parse(dateParts[2]),
-      int.parse(dateParts[1]),
-      int.parse(dateParts[0]),
-    );
-
-    return Ticket(
-      id: booking.id,
-      busName: booking.busId, // Ideally we'd get the bus name from the DB
-      from: booking.fromLocation,
-      to: booking.toLocation,
-      date: date,
-      departureTime: "Check schedule", // Ideally we'd get this from the bus
-      passengers: booking.passengers,
-      seatNumbers: booking.seatNumbers.split(','),
-      status: booking.bookingStatus,
-      qrCode: booking.id, // Use booking ID for QR data
-    );
-  }
-
-  Widget _buildTicketCard(BuildContext context, Ticket ticket) {
-    final bool isUpcoming =
-        ticket.date.isAfter(DateTime.now()) ||
-        (ticket.date.day == DateTime.now().day &&
-            ticket.date.month == DateTime.now().month &&
-            ticket.date.year == DateTime.now().year);
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => _buildTicketDetailsScreen(context, ticket),
-          ),
-        );
+    debugPrint('TicketScreen: Building ticket screen...');
+    return WillPopScope(
+      onWillPop: () async {
+        debugPrint('TicketScreen: Back button pressed, navigating to home...');
+        _navigateToHome(context);
+        return false;
       },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 15),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              spreadRadius: 1,
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Ticket Details'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _navigateToHome(context),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: () => _shareTicket(context),
+              tooltip: 'Share Ticket',
+            ),
+            IconButton(
+              icon: const Icon(Icons.download),
+              onPressed: () => _downloadTicket(context),
+              tooltip: 'Download Ticket',
             ),
           ],
         ),
-        child: Column(
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-              decoration: BoxDecoration(
-                color: isUpcoming ? AppTheme.primaryColor : Colors.grey,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(10),
-                  topRight: Radius.circular(10),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    isUpcoming ? 'Upcoming Trip' : 'Past Trip',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isUpcoming ? Colors.green : Colors.grey[600],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      ticket.status,
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Ticket content
-            Padding(
-              padding: const EdgeInsets.all(15),
-              child: Column(
-                children: [
-                  // Bus info and date
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.directions_bus,
-                        color: AppTheme.primaryColor,
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Success Message
+              Card(
+                color: Colors.green,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: const [
+                      Icon(
+                        Icons.check_circle_outline,
+                        color: Colors.white,
+                        size: 48,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              ticket.busName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              '${ticket.date.day}/${ticket.date.month}/${ticket.date.year} • ${ticket.departureTime}',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 15),
-                  // Route
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              ticket.from,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              'From',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.arrow_forward, color: Colors.grey),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              ticket.to,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              'To',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 15),
-                  // Passengers and seat info
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
+                      SizedBox(height: 8),
                       Text(
-                        '${ticket.passengers} ${ticket.passengers > 1 ? 'Passengers' : 'Passenger'}',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                      Text(
-                        'Seats: ${ticket.seatNumbers.join(', ')}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // Footer
-            // In ticket_screen.dart, update the status container in the _buildTicketCard method:
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color:
-                    ticket.status == 'Confirmed'
-                        ? Colors.green
-                        : ticket.status == 'Pending'
-                        ? Colors.orange
-                        : Colors.grey[600],
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                ticket.status,
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTicketDetailsScreen(BuildContext context, Ticket ticket) {
-    final bool isUpcoming =
-        ticket.date.isAfter(DateTime.now()) ||
-        (ticket.date.day == DateTime.now().day &&
-            ticket.date.month == DateTime.now().month &&
-            ticket.date.year == DateTime.now().year);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ticket Details'),
-        backgroundColor: AppTheme.primaryColor,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(15),
-        child: Column(
-          children: [
-            // Ticket status
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color:
-                    ticket.status == 'Confirmed'
-                        ? Colors.green
-                        : ticket.status == 'Pending'
-                        ? Colors.orange
-                        : Colors.grey,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                ticket.status,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Ticket card
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.2),
-                    spreadRadius: 2,
-                    blurRadius: 5,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  // Company logo and name
-                  Container(
-                    padding: const EdgeInsets.all(15),
-                    decoration: const BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(10),
-                        topRight: Radius.circular(10),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: const Icon(
-                            Icons.directions_bus,
-                            color: AppTheme.primaryColor,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'Rwanda Bus Services',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Ticket details
-                  Padding(
-                    padding: const EdgeInsets.all(15),
-                    child: Column(
-                      children: [
-                        _buildDetailRow('Bus', ticket.busName),
-                        const Divider(),
-                        _buildDetailRow('From', ticket.from),
-                        _buildDetailRow('To', ticket.to),
-                        const Divider(),
-                        _buildDetailRow(
-                          'Date',
-                          '${ticket.date.day}/${ticket.date.month}/${ticket.date.year}',
-                        ),
-                        _buildDetailRow('Departure Time', ticket.departureTime),
-                        const Divider(),
-                        _buildDetailRow('Passengers', '${ticket.passengers}'),
-                        _buildDetailRow('Seats', ticket.seatNumbers.join(', ')),
-                        const Divider(),
-                        _buildDetailRow('Ticket ID', ticket.id),
-                      ],
-                    ),
-                  ),
-                  // QR Code
-                  Container(
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(10),
-                        bottomRight: Radius.circular(10),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'Scan this QR code at the bus station',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                        const SizedBox(height: 15),
-                        Container(
+                        'Payment Successful!',
+                        style: TextStyle(
                           color: Colors.white,
-                          padding: const EdgeInsets.all(10),
-                          child: QrImageView(
-                            data: ticket.id, // Use ticket ID as QR code data
-                            version: QrVersions.auto,
-                            size: 150,
-                            backgroundColor: Colors.white,
-                          ),
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-            // Additional options
-            if (isUpcoming) ...[
-              // Share ticket button
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    _shareTicket(ticket);
-                  },
-                  icon: const Icon(Icons.share),
-                  label: const Text('Share Ticket'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Your ticket has been booked',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 15),
-              // Cancel ticket button
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder:
-                          (context) => AlertDialog(
-                            title: const Text('Cancel Ticket'),
-                            content: const Text(
-                              'Are you sure you want to cancel this ticket? Cancellation fees may apply.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                },
-                                child: const Text('No'),
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Ticket cancellation request submitted',
-                                      ),
-                                      backgroundColor: Colors.orange,
-                                    ),
-                                  );
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                ),
-                                child: const Text('Yes, Cancel'),
-                              ),
-                            ],
+              const SizedBox(height: 24),
+              // Ticket Card
+              Card(
+                child: Column(
+                  children: [
+                    // QR Code
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          QrImageView(
+                            data: 'TICKET:${booking.id}',
+                            version: QrVersions.auto,
+                            size: 150.0,
                           ),
-                    );
-                  },
-                  icon: const Icon(Icons.cancel, color: Colors.red),
-                  label: const Text(
-                    'Cancel Ticket',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    side: const BorderSide(color: Colors.red),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Booking ID: ${booking.id}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Ticket Details
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          _buildDetailRow(
+                            'From',
+                            booking.fromLocation,
+                            Icons.location_on_outlined,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDetailRow(
+                            'To',
+                            booking.toLocation,
+                            Icons.location_on,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDetailRow(
+                            'Journey Date',
+                            DateFormatter.format(booking.journeyDate),
+                            Icons.calendar_today,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDetailRow(
+                            'Seat Number',
+                            booking.seatNumber ?? 'Not Assigned',
+                            Icons.event_seat,
+                          ),
+                          const Divider(height: 32),
+                          _buildDetailRow(
+                            'Amount Paid',
+                            '₹${booking.totalAmount}',
+                            Icons.payment,
+                            valueStyle: TextStyle(
+                              color: Theme.of(context).primaryColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Important Information
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'Important Information',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        '• Please arrive at least 15 minutes before departure\n'
+                        '• Show this ticket at the counter for verification\n'
+                        '• Carry a valid ID proof while traveling\n'
+                        '• No refund on cancellation',
+                        style: TextStyle(height: 1.5),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ],
-          ],
+          ),
+        ),
+        bottomNavigationBar: BottomAppBar(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: ElevatedButton(
+              onPressed: () => _navigateToHome(context),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Back to Home',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: Colors.grey[600])),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
+  void _navigateToHome(BuildContext context) {
+    debugPrint('TicketScreen: Navigating to home screen...');
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const UserDashboard()),
+      (route) => false,
+    );
+    debugPrint('TicketScreen: Navigation complete');
+  }
+
+  Widget _buildDetailRow(
+    String label,
+    String value,
+    IconData icon, {
+    TextStyle? valueStyle,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: Colors.grey),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: valueStyle ??
+                    const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
-}
-
-// Ticket UI model (separate from Booking database model)
-class Ticket {
-  final String id;
-  final String busName;
-  final String from;
-  final String to;
-  final DateTime date;
-  final String departureTime;
-  final int passengers;
-  final List<String> seatNumbers;
-  final String status;
-  final String qrCode;
-
-  Ticket({
-    required this.id,
-    required this.busName,
-    required this.from,
-    required this.to,
-    required this.date,
-    required this.departureTime,
-    required this.passengers,
-    required this.seatNumbers,
-    required this.status,
-    required this.qrCode,
-  });
-}
+} 

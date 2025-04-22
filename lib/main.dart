@@ -1,28 +1,165 @@
 // lib/main.dart (updated)
 import 'package:flutter/material.dart';
-import 'package:tickiting/screens/welcome_screen.dart';
-import 'package:tickiting/utils/database_helper.dart';
-import 'package:tickiting/utils/theme.dart';
-import 'package:tickiting/services/notification_service.dart';
+import 'package:provider/provider.dart';
+import 'app.dart';
+import 'screens/splash_screen.dart';
+import 'utils/database_helper.dart';
+import 'services/bus_service.dart';
+import 'services/booking_service.dart';
+import 'services/payment_service.dart';
+import 'services/auth_service.dart';
+import 'services/route_service.dart';
+import 'services/notification_service.dart';
+import 'models/user.dart';
+import 'models/booking.dart';
+import 'package:flutter/foundation.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+Future<void> main() async {
+  try {
+    debugPrint('Main: Starting app initialization...');
+    
+    // Ensure Flutter bindings are initialized
+    WidgetsFlutterBinding.ensureInitialized();
+    debugPrint('Main: Flutter binding initialized');
+    
+    // Create and initialize database helper
+    debugPrint('Main: Creating DatabaseHelper...');
+    final databaseHelper = DatabaseHelper();
+    
+    debugPrint('Main: Getting database instance...');
+    final db = await databaseHelper.database;
+    debugPrint('Main: Database initialized successfully');
 
-  // Initialize the database
-  final databaseHelper = DatabaseHelper();
-  await databaseHelper.database;
+    // Create services in dependency order
+    debugPrint('Main: Creating services...');
+    final authService = AuthService(databaseHelper: databaseHelper);
+    final busService = BusService(databaseHelper: databaseHelper);
+    final routeService = RouteService(databaseHelper: databaseHelper);
+    final bookingService = BookingService(
+      databaseHelper: databaseHelper,
+      busService: busService,
+    );
+    final paymentService = PaymentService(databaseHelper, bookingService);
+    final notificationService = NotificationService(databaseHelper: databaseHelper);
 
-  // Aggressively fix existing notifications
-  await _fixExistingNotifications();
+    // Initialize core services first
+    debugPrint('Main: Initializing core services...');
+    await Future.wait<void>([
+      authService.initialize(),
+      busService.initialize(),
+      routeService.initialize(),
+    ]).catchError((error) {
+      debugPrint('Main: Error initializing core services: $error');
+      throw error;
+    });
 
-  // Also use the database helper's method for comprehensive fix
-  await databaseHelper.replaceAdminUserInAllNotifications();
+    // Initialize dependent services
+    debugPrint('Main: Initializing dependent services...');
+    await Future.wait<void>([
+      bookingService.initialize(),
+      paymentService.initialize(),
+      notificationService.initialize(),
+    ]).catchError((error) {
+      debugPrint('Main: Error initializing dependent services: $error');
+      throw error;
+    });
+    
+    debugPrint('Main: All services initialized successfully');
 
-  // Initialize the notification service which will also run its own fixExistingNotifications
-  final notificationService = NotificationService();
-  await notificationService.initialize();
-
-  runApp(const MyApp());
+    debugPrint('Main: Setting up providers...');
+    runApp(
+      MultiProvider(
+        providers: [
+          Provider<DatabaseHelper>.value(value: databaseHelper),
+          ChangeNotifierProvider<AuthService>.value(value: authService),
+          ChangeNotifierProvider<RouteService>.value(value: routeService),
+          ChangeNotifierProvider<BusService>.value(value: busService),
+          ChangeNotifierProvider<BookingService>.value(value: bookingService),
+          ChangeNotifierProvider<PaymentService>.value(value: paymentService),
+          ChangeNotifierProvider<NotificationService>.value(value: notificationService),
+        ],
+        child: Builder(
+          builder: (context) {
+            debugPrint('Main: Building MyApp...');
+            return const MyApp();
+          },
+        ),
+      ),
+    );
+    debugPrint('Main: App initialization completed successfully');
+  } catch (e, stackTrace) {
+    debugPrint('Main: Error during app initialization: $e');
+    debugPrint('Main: Stack trace: $stackTrace');
+    
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          primarySwatch: Colors.deepPurple,
+          useMaterial3: true,
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: Colors.black,
+          colorScheme: ColorScheme.dark(
+            primary: Colors.deepPurple,
+            secondary: Colors.deepPurpleAccent,
+            surface: Colors.grey[900]!,
+            background: Colors.black,
+          ),
+        ),
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 48,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Error Starting App',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Error: $e',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Details: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () async {
+                      try {
+                        await main();
+                      } catch (retryError) {
+                        debugPrint('Main: Error during retry: $retryError');
+                      }
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 Future<void> _fixExistingNotifications() async {
@@ -33,7 +170,9 @@ Future<void> _fixExistingNotifications() async {
 
   // First, get all available users to find a suitable replacement
   final users = await databaseHelper.getAllUsers();
-  final realUsers = users.where((user) => user.name != 'Admin User').toList();
+  final realUsers = users.map((map) => User.fromMap(map))
+      .where((user) => user.name != 'Admin User')
+      .toList();
 
   // Default replacement name if no match is found
   String defaultName = "Real User";
@@ -68,32 +207,32 @@ Future<void> _fixExistingNotifications() async {
 
         // Try to find a matching booking
         final bookings = await databaseHelper.getAllBookings();
-        final matchingBooking =
-            bookings
-                .where(
-                  (b) =>
-                      b.fromLocation == fromLocation &&
-                      b.toLocation == toLocation,
-                )
-                .toList();
+        final matchingBooking = bookings
+            .map((map) => Booking.fromMap(map))
+            .where(
+              (b) => b.fromLocation == fromLocation && b.toLocation == toLocation,
+            )
+            .toList();
 
         if (matchingBooking.isNotEmpty) {
           // Use the user ID from the booking
           final bookingUserId = matchingBooking.first.userId;
-          final user = await databaseHelper.getUserById(bookingUserId);
+          final userMap = await databaseHelper.getUserById(bookingUserId);
+          if (userMap != null) {
+            final user = User.fromMap(userMap);
+            if (user.name != "Admin User") {
+              updatedMessage = message.replaceAll("Admin User", user.name);
+              wasFixed = true;
 
-          if (user != null && user.name != "Admin User") {
-            updatedMessage = message.replaceAll("Admin User", user.name);
-            wasFixed = true;
+              await db.update(
+                'notifications',
+                {'message': updatedMessage},
+                where: 'id = ?',
+                whereArgs: [id],
+              );
 
-            await db.update(
-              'notifications',
-              {'message': updatedMessage},
-              where: 'id = ?',
-              whereArgs: [id],
-            );
-
-            print("Fixed notification #$id: '$message' -> '$updatedMessage'");
+              print("Fixed notification #$id: '$message' -> '$updatedMessage'");
+            }
           }
         }
       }
@@ -101,22 +240,24 @@ Future<void> _fixExistingNotifications() async {
 
     // STRATEGY 2: For other notification types, try using the userId if available
     if (!wasFixed && userId != null) {
-      final user = await databaseHelper.getUserById(userId);
+      final userMap = await databaseHelper.getUserById(userId);
+      if (userMap != null) {
+        final user = User.fromMap(userMap);
+        if (user.name != "Admin User") {
+          updatedMessage = message.replaceAll("Admin User", user.name);
+          wasFixed = true;
 
-      if (user != null && user.name != "Admin User") {
-        updatedMessage = message.replaceAll("Admin User", user.name);
-        wasFixed = true;
+          await db.update(
+            'notifications',
+            {'message': updatedMessage},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
 
-        await db.update(
-          'notifications',
-          {'message': updatedMessage},
-          where: 'id = ?',
-          whereArgs: [id],
-        );
-
-        print(
-          "Fixed notification #$id using userId: '$message' -> '$updatedMessage'",
-        );
+          print(
+            "Fixed notification #$id using userId: '$message' -> '$updatedMessage'",
+          );
+        }
       }
     }
 
@@ -156,19 +297,5 @@ Future<void> _fixExistingNotifications() async {
     print("Updated admin user name to 'System Administrator'");
   } catch (e) {
     print("Error updating admin user name: $e");
-  }
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Rwanda Bus Booking',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: const WelcomeScreen(),
-    );
   }
 }

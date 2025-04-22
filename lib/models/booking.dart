@@ -1,72 +1,114 @@
 // lib/models/booking.dart
+import 'package:intl/intl.dart';
+
 class Booking {
-  final String id;
+  final int? id;
   final int userId;
-  final String busId;
+  final int busId;
   final String fromLocation;
   final String toLocation;
-  final String travelDate;
-  final int passengers;
-  final String seatNumbers;
+  final DateTime travelDate;
+  final int numberOfSeats;
   final double totalAmount;
-  final String paymentMethod;
-  final String paymentStatus;
-  final String bookingStatus;
-  final String? createdAt;
-  bool notificationSent; // Added field to track if notifications have been sent
+  final String status;
+  final DateTime createdAt;
+  final String? seatNumber;
+  final String? paymentStatus;
+  final int? confirmedBy;
+  final DateTime? confirmedAt;
 
   Booking({
-    required this.id,
+    this.id,
     required this.userId,
     required this.busId,
     required this.fromLocation,
     required this.toLocation,
     required this.travelDate,
-    required this.passengers,
-    required this.seatNumbers,
+    required this.numberOfSeats,
     required this.totalAmount,
-    required this.paymentMethod,
-    required this.paymentStatus,
-    required this.bookingStatus,
-    this.createdAt,
-    this.notificationSent = false,
-  });
+    this.status = 'pending',
+    this.seatNumber,
+    this.paymentStatus = 'pending',
+    DateTime? createdAt,
+    this.confirmedBy,
+    this.confirmedAt,
+  }) : createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
+    final now = DateTime.now().toIso8601String();
+    final seatNumbers = List.generate(numberOfSeats, (index) => index + 1).join(',');
+    
     return {
       'id': id,
-      'user_id': userId,
-      'bus_id': busId,
-      'from_location': fromLocation,
-      'to_location': toLocation,
-      'travel_date': travelDate,
-      'passengers': passengers,
-      'seat_numbers': seatNumbers,
-      'total_amount': totalAmount,
-      'payment_method': paymentMethod,
-      'payment_status': paymentStatus,
-      'booking_status': bookingStatus,
-      'created_at': createdAt ?? DateTime.now().toIso8601String(),
-      'notification_sent': notificationSent ? 1 : 0,
+      'userId': userId,
+      'busId': busId,
+      'numberOfSeats': numberOfSeats,
+      'totalAmount': totalAmount,
+      'status': status,
+      'paymentStatus': paymentStatus ?? 'pending',
+      'fromLocation': fromLocation,
+      'toLocation': toLocation,
+      'bookingDate': now,
+      'journeyDate': travelDate.toIso8601String(),
+      'seatNumber': seatNumber ?? seatNumbers,
+      'createdAt': now,
+      'confirmedBy': confirmedBy,
+      'confirmedAt': confirmedAt?.toIso8601String(),
     };
   }
 
   factory Booking.fromMap(Map<String, dynamic> map) {
     return Booking(
-      id: map['id'],
-      userId: map['user_id'],
-      busId: map['bus_id'],
-      fromLocation: map['from_location'],
-      toLocation: map['to_location'],
-      travelDate: map['travel_date'],
-      passengers: map['passengers'],
-      seatNumbers: map['seat_numbers'],
-      totalAmount: map['total_amount'],
-      paymentMethod: map['payment_method'],
-      paymentStatus: map['payment_status'],
-      bookingStatus: map['booking_status'],
-      createdAt: map['created_at'],
-      notificationSent: map['notification_sent'] == 1,
+      id: map['id'] as int?,
+      userId: map['userId'] as int,
+      busId: map['busId'] as int,
+      fromLocation: map['fromLocation'] as String,
+      toLocation: map['toLocation'] as String,
+      travelDate: DateTime.parse(map['journeyDate'] as String),
+      numberOfSeats: map['numberOfSeats'] as int,
+      totalAmount: map['totalAmount'] as double,
+      status: map['status'] as String? ?? 'pending',
+      seatNumber: map['seatNumber'] as String?,
+      paymentStatus: map['paymentStatus'] as String? ?? 'pending',
+      createdAt: DateTime.parse(map['createdAt'] as String),
+      confirmedBy: map['confirmedBy'] as int?,
+      confirmedAt: map['confirmedAt'] != null ? DateTime.parse(map['confirmedAt'] as String) : null,
     );
   }
+
+  Booking copyWith({
+    int? id,
+    int? userId,
+    int? busId,
+    String? fromLocation,
+    String? toLocation,
+    DateTime? travelDate,
+    int? numberOfSeats,
+    double? totalAmount,
+    String? status,
+    String? seatNumber,
+    String? paymentStatus,
+    DateTime? createdAt,
+    int? confirmedBy,
+    DateTime? confirmedAt,
+  }) {
+    return Booking(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      busId: busId ?? this.busId,
+      fromLocation: fromLocation ?? this.fromLocation,
+      toLocation: toLocation ?? this.toLocation,
+      travelDate: travelDate ?? this.travelDate,
+      numberOfSeats: numberOfSeats ?? this.numberOfSeats,
+      totalAmount: totalAmount ?? this.totalAmount,
+      status: status ?? this.status,
+      seatNumber: seatNumber ?? this.seatNumber,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      createdAt: createdAt ?? this.createdAt,
+      confirmedBy: confirmedBy ?? this.confirmedBy,
+      confirmedAt: confirmedAt ?? this.confirmedAt,
+    );
+  }
+
+  DateTime get journeyDate => travelDate;
 }

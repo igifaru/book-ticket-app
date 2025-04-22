@@ -1,60 +1,149 @@
 // lib/models/bus.dart
+import 'package:intl/intl.dart';
+
 class Bus {
-  final String id;
-  final String name;
+  final int? id;
+  final String busNumber;
+  final int capacity;
+  final String type;
+  final bool isActive;
+  final String busName;
+  final int routeId;
   final String departureTime;
   final String arrivalTime;
-  final String duration;
-  final double price;
+  final int totalSeats;
   final int availableSeats;
-  final String busType;
-  final List<String> features;
-  final String fromLocation; // Added route information
-  final String toLocation; // Added route information
+  final double price;
+  final String fromLocation;
+  final String toLocation;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime travelDate;
 
   Bus({
-    required this.id,
-    required this.name,
+    this.id,
+    required this.busNumber,
+    required this.capacity,
+    required this.type,
+    this.isActive = true,
+    required this.busName,
+    required this.routeId,
     required this.departureTime,
     required this.arrivalTime,
-    required this.duration,
-    required this.price,
+    required this.totalSeats,
     required this.availableSeats,
-    required this.busType,
-    required this.features,
-    this.fromLocation = 'Kigali',
-    this.toLocation = 'Butare',
+    required this.price,
+    required this.fromLocation,
+    required this.toLocation,
+    this.status = 'active',
+    this.createdAt,
+    required this.travelDate,
   });
+
+  String get formattedPrice => NumberFormat.currency(
+        symbol: 'RWF ',
+        decimalDigits: 2,
+      ).format(price);
+
+  String get formattedDepartureTime => departureTime;
+  String get formattedArrivalTime => arrivalTime;
+  String get formattedTravelDate => DateFormat('yyyy-MM-dd').format(travelDate);
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'name': name,
-      'departure_time': departureTime,
-      'arrival_time': arrivalTime,
-      'duration': duration,
+      'busNumber': busNumber,
+      'capacity': capacity,
+      'type': type,
+      'isActive': isActive ? 1 : 0,
+      'busName': busName,
+      'routeId': routeId,
+      'departureTime': departureTime,
+      'arrivalTime': arrivalTime,
+      'totalSeats': totalSeats,
+      'availableSeats': availableSeats,
       'price': price,
-      'available_seats': availableSeats,
-      'bus_type': busType,
-      'features': features.join(','),
-      'from_location': fromLocation,
-      'to_location': toLocation,
+      'fromLocation': fromLocation,
+      'toLocation': toLocation,
+      'status': status,
+      'createdAt': createdAt?.toIso8601String(),
+      'travelDate': travelDate.toIso8601String(),
     };
   }
 
   factory Bus.fromMap(Map<String, dynamic> map) {
     return Bus(
-      id: map['id'],
-      name: map['name'],
-      departureTime: map['departure_time'],
-      arrivalTime: map['arrival_time'],
-      duration: map['duration'],
-      price: map['price'],
-      availableSeats: map['available_seats'],
-      busType: map['bus_type'],
-      features: map['features'].split(','),
-      fromLocation: map['from_location'] ?? 'Kigali',
-      toLocation: map['to_location'] ?? 'Butare',
+      id: map['id'] as int?,
+      busNumber: map['busNumber'] as String,
+      capacity: map['capacity'] as int,
+      type: map['type'] as String,
+      isActive: map['isActive'] == 1,
+      busName: map['busName'] as String,
+      routeId: map['routeId'] as int,
+      departureTime: map['departureTime'] as String,
+      arrivalTime: map['arrivalTime'] as String,
+      totalSeats: map['totalSeats'] as int,
+      availableSeats: map['availableSeats'] as int,
+      price: map['price'].toDouble(),
+      fromLocation: map['fromLocation'] as String,
+      toLocation: map['toLocation'] as String,
+      status: map['status'] ?? 'active',
+      createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
+      travelDate: DateTime.parse(map['travelDate']),
     );
+  }
+
+  Bus copyWith({
+    int? id,
+    String? busNumber,
+    int? capacity,
+    String? type,
+    bool? isActive,
+    String? busName,
+    int? routeId,
+    String? departureTime,
+    String? arrivalTime,
+    int? totalSeats,
+    int? availableSeats,
+    double? price,
+    String? fromLocation,
+    String? toLocation,
+    String? status,
+    DateTime? createdAt,
+    DateTime? travelDate,
+  }) {
+    return Bus(
+      id: id ?? this.id,
+      busNumber: busNumber ?? this.busNumber,
+      capacity: capacity ?? this.capacity,
+      type: type ?? this.type,
+      isActive: isActive ?? this.isActive,
+      busName: busName ?? this.busName,
+      routeId: routeId ?? this.routeId,
+      departureTime: departureTime ?? this.departureTime,
+      arrivalTime: arrivalTime ?? this.arrivalTime,
+      totalSeats: totalSeats ?? this.totalSeats,
+      availableSeats: availableSeats ?? this.availableSeats,
+      price: price ?? this.price,
+      fromLocation: fromLocation ?? this.fromLocation,
+      toLocation: toLocation ?? this.toLocation,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      travelDate: travelDate ?? this.travelDate,
+    );
+  }
+
+  DateTime getDepartureDateTime(DateTime date) {
+    final timeParts = departureTime.split(':');
+    final hour = int.parse(timeParts[0]);
+    final minute = int.parse(timeParts[1]);
+    return DateTime(date.year, date.month, date.day, hour, minute);
+  }
+
+  DateTime getArrivalDateTime(DateTime date) {
+    final timeParts = arrivalTime.split(':');
+    final hour = int.parse(timeParts[0]);
+    final minute = int.parse(timeParts[1]);
+    return DateTime(date.year, date.month, date.day, hour, minute);
   }
 }

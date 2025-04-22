@@ -1,441 +1,173 @@
-// lib/screens/profile_screen.dart
 import 'package:flutter/material.dart';
-import 'package:tickiting/screens/auth/login_screen.dart';
-import 'package:tickiting/screens/welcome_screen.dart'; // Ensure WelcomeScreen is imported
-import 'package:tickiting/utils/theme.dart';
-import 'package:tickiting/utils/database_helper.dart';
-import 'package:tickiting/models/user.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
+import '../services/booking_service.dart';
+import '../models/user.dart';
+import '../models/booking.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  _ProfileScreenState createState() => _ProfileScreenState();
+  State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // User data
-  User? _currentUser;
-  bool _isLoading = true;
-
-  // Form controllers
-  final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _currentPasswordController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
+  bool _isLoading = false;
+  User? _user;
+  List<Booking> _bookings = [];
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _loadData();
   }
 
-  Future<void> _loadUserData() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
 
     try {
-      // Get current user ID from shared preferences
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getInt('current_user_id');
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final bookingService = Provider.of<BookingService>(context, listen: false);
 
-      if (userId != null) {
-        // Fetch user data from database
-        final user = await DatabaseHelper().getUserById(userId);
-
-        if (user != null && mounted) {
-          setState(() {
-            _currentUser = user;
-            _nameController.text = user.name;
-            _phoneController.text = user.phone;
-          });
-        }
-      }
-    } catch (e) {
-      print('Error loading user data: $e');
-    } finally {
-      if (mounted) {
+      final user = await authService.getCurrentUser();
+      if (user != null) {
+        final bookings = await bookingService.getUserBookings(user.id!);
         setState(() {
-          _isLoading = false;
+          _user = user;
+          _bookings = bookings;
         });
       }
-    }
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    _currentPasswordController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  void _updateProfile() {
-    if (_nameController.text.isEmpty || _phoneController.text.isEmpty) {
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill all required fields'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(e.toString())),
       );
-      return;
+    } finally {
+      setState(() => _isLoading = false);
     }
-
-    if (_currentUser != null) {
-      _currentUser!.name = _nameController.text;
-      _currentUser!.phone = _phoneController.text;
-
-      DatabaseHelper()
-          .updateUser(_currentUser!)
-          .then((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Profile updated successfully'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          })
-          .catchError((error) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error updating profile: $error'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          });
-    }
-  }
-
-  void _changePassword() {
-    if (_currentPasswordController.text.isEmpty ||
-        _newPasswordController.text.isEmpty ||
-        _confirmPasswordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill all password fields'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (_newPasswordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('New passwords do not match'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // Verify current password
-    if (_currentUser != null &&
-        _currentUser!.password == _currentPasswordController.text) {
-      _currentUser!.password = _newPasswordController.text;
-
-      DatabaseHelper()
-          .updateUser(_currentUser!)
-          .then((_) {
-            // Clear password fields
-            _currentPasswordController.clear();
-            _newPasswordController.clear();
-            _confirmPasswordController.clear();
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Password changed successfully'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          })
-          .catchError((error) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Error changing password: $error'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Current password is incorrect'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  void _logout() async {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Logout'),
-            content: const Text('Are you sure you want to logout?'),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  // Clear current user from shared preferences
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('current_user_id');
-
-                  if (mounted) {
-                    // Navigate to WelcomeScreen instead of LoginScreen
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const WelcomeScreen(),
-                      ),
-                      (route) => false,
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Logout'),
-              ),
-            ],
-          ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_user == null) {
+      return const Scaffold(
+        body: Center(child: Text('User not found')),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Profile'),
-        backgroundColor: AppTheme.primaryColor,
+        title: const Text('Profile'),
       ),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _currentUser == null
-              ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('User not found. Please login again.'),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const LoginScreen(),
-                          ),
-                        );
-                      },
-                      child: const Text('Go to Login'),
-                    ),
-                  ],
-                ),
-              )
-              : SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Profile header
-                    Center(
-                      child: Column(
-                        children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundColor: AppTheme.primaryColor.withOpacity(
-                              0.1,
-                            ),
-                            child: Text(
-                              _currentUser!.name.isNotEmpty
-                                  ? _currentUser!.name
-                                      .substring(0, 1)
-                                      .toUpperCase()
-                                  : "?",
-                              style: const TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-                          Text(
-                            _currentUser!.name,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            _currentUser!.email,
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                        ],
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const CircleAvatar(
+                        radius: 50,
+                        child: Icon(Icons.person, size: 50),
                       ),
-                    ),
-                    const SizedBox(height: 30),
-                    // Profile details
-                    const Text(
-                      'Personal Information',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-                    Container(
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            spreadRadius: 1,
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          TextFormField(
-                            controller: _nameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Full Name',
-                              prefixIcon: Icon(Icons.person),
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-                          TextFormField(
-                            readOnly: true,
-                            initialValue: _currentUser!.email,
-                            decoration: const InputDecoration(
-                              labelText: 'Email',
-                              prefixIcon: Icon(Icons.email),
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-                          TextFormField(
-                            controller: _phoneController,
-                            decoration: const InputDecoration(
-                              labelText: 'Phone Number',
-                              prefixIcon: Icon(Icons.phone),
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-                          InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'Gender',
-                              prefixIcon: Icon(Icons.person_outline),
-                            ),
-                            child: Text(_currentUser!.gender),
-                          ),
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _updateProfile,
-                              child: const Text('Update Profile'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    // Change password
-                    const Text(
-                      'Change Password',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-                    Container(
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            spreadRadius: 1,
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          TextFormField(
-                            controller: _currentPasswordController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Current Password',
-                              prefixIcon: Icon(Icons.lock),
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-                          TextFormField(
-                            controller: _newPasswordController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: 'New Password',
-                              prefixIcon: Icon(Icons.lock_outline),
-                            ),
-                          ),
-                          const SizedBox(height: 15),
-                          TextFormField(
-                            controller: _confirmPasswordController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Confirm New Password',
-                              prefixIcon: Icon(Icons.lock_outline),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _changePassword,
-                              child: const Text('Change Password'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    // Logout button
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _logout,
-                        icon: const Icon(Icons.logout, color: Colors.red),
-                        label: const Text(
-                          'Logout',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: const BorderSide(color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text(
+                        _user!.username ?? 'No username',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Text(
+                        _user!.email,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (_user!.phone != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _user!.phone!,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
+              const SizedBox(height: 24),
+              const Text(
+                'Booking History',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_bookings.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'No bookings found',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _bookings.length,
+                  itemBuilder: (context, index) {
+                    final booking = _bookings[index];
+                    return Card(
+                      child: ListTile(
+                        title: Text('Booking #${booking.id}'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Number of Seats: ${booking.numberOfSeats}'),
+                            Text('Status: ${booking.status}'),
+                            Text('Total Amount: RWF ${booking.totalAmount.toStringAsFixed(2)}'),
+                          ],
+                        ),
+                        trailing: booking.status == 'pending'
+                            ? TextButton(
+                                onPressed: () {
+                                  // TODO: Implement cancel booking
+                                },
+                                child: const Text('Cancel'),
+                              )
+                            : null,
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
-}
+} 

@@ -1,135 +1,127 @@
-// In lib/screens/welcome_screen.dart
 import 'package:flutter/material.dart';
-import 'package:tickiting/screens/auth/login_screen.dart';
-import 'package:tickiting/utils/theme.dart';
-import 'dart:async';
-import 'package:tickiting/utils/admin_login_dialog.dart'; // Import the admin login helper
+import 'login_screen.dart';
 
-class WelcomeScreen extends StatefulWidget {
+class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
-
-  @override
-  _WelcomeScreenState createState() => _WelcomeScreenState();
-}
-
-class _WelcomeScreenState extends State<WelcomeScreen> {
-  // Counter for logo taps
-  int _logoTapCount = 0;
-
-  // Timer to reset tap count if user doesn't tap quickly enough
-  Timer? _tapTimer;
-
-  void _handleLogoTap() {
-    // Increment the tap counter
-    setState(() {
-      _logoTapCount++;
-    });
-
-    // Cancel existing timer
-    _tapTimer?.cancel();
-
-    // Set new timer to reset the counter after 2 seconds of inactivity
-    _tapTimer = Timer(const Duration(seconds: 2), () {
-      setState(() {
-        _logoTapCount = 0;
-      });
-    });
-
-    // If tapped 5 times, show admin login dialog
-    if (_logoTapCount == 5) {
-      setState(() {
-        _logoTapCount = 0;
-      });
-      _tapTimer?.cancel();
-
-      // Show admin login dialog
-      handleAdminAccess(context);
-    }
-  }
-
-  @override
-  void dispose() {
-    _tapTimer?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 30),
-        width: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+            colors: [
+              Theme.of(context).primaryColor,
+              Theme.of(context).primaryColor.withOpacity(0.8),
+            ],
           ),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Logo - now with tap detection
-            GestureDetector(
-              onTap: _handleLogoTap,
-              child: Container(
-                height: 150,
-                width: 150,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(75),
-                ),
-                child: const Icon(
-                  Icons.directions_bus,
-                  size: 100,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ),
-            const SizedBox(height: 40),
-            // App name
-            const Text(
-              'Rwanda Bus Ticket',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Book your bus tickets easily and quickly',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 16),
-            ),
-            const SizedBox(height: 60),
-            // Get Started button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const LoginScreen(),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Column(
+              children: [
+                const Spacer(flex: 2),
+                // Logo/Icon with animation
+                TweenAnimationBuilder(
+                  tween: Tween<double>(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 1000),
+                  builder: (context, double value, child) {
+                    return Transform.scale(
+                      scale: value,
+                      child: child,
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
+                    child: const Icon(
+                      Icons.directions_bus_rounded,
+                      size: 80,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
-                child: const Text(
-                  'Get Started',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                const Spacer(),
+                // Welcome Text with animation
+                TweenAnimationBuilder(
+                  tween: Tween<double>(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 1000),
+                  builder: (context, double value, child) {
+                    return Opacity(
+                      opacity: value,
+                      child: Transform.translate(
+                        offset: Offset(0, 20 * (1 - value)),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Column(
+                    children: const [
+                      Text(
+                        'Bus Ticket Booking',
+                        style: TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          height: 1.2,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Book your bus tickets with ease\nAnytime, Anywhere',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.white70,
+                          height: 1.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const Spacer(flex: 2),
+                // Get Started Button
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LoginScreen(),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Theme.of(context).primaryColor,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 48,
+                      vertical: 20,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 3,
+                    minimumSize: const Size(double.infinity, 60),
+                  ),
+                  child: const Text(
+                    'Get Started',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+              ],
             ),
-            const SizedBox(height: 20),
-
-            // Create account button
-          ],
+          ),
         ),
       ),
     );
