@@ -188,6 +188,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: 'Email',
                     hint: 'Enter your email address',
                     prefixIcon: const Icon(Icons.email_outlined),
+                  ).copyWith(
+                    labelStyle: TextStyle(color: Theme.of(context).primaryColor),
+                    hintStyle: TextStyle(color: Colors.grey[600]),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
@@ -219,6 +222,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         });
                       },
                     ),
+                  ).copyWith(
+                    labelStyle: TextStyle(color: Theme.of(context).primaryColor),
+                    hintStyle: TextStyle(color: Colors.grey[600]),
                   ),
                   obscureText: _obscurePassword,
                   validator: (value) {

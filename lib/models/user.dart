@@ -9,6 +9,7 @@ class User {
   final String role;
   final String username;
   final DateTime createdAt;
+  final String? status;
 
   User({
     this.id,
@@ -19,6 +20,7 @@ class User {
     this.role = 'user',
     String? username,
     DateTime? createdAt,
+    this.status = 'active',
   }) : username = username ?? email.split('@')[0],
        createdAt = createdAt ?? DateTime.now();
 
@@ -32,6 +34,7 @@ class User {
       role: map['role'] as String? ?? 'user',
       username: map['username'] as String?,
       createdAt: DateTime.parse(map['createdAt'] as String),
+      status: map['status'] as String? ?? 'active',
     );
   }
 
@@ -45,6 +48,7 @@ class User {
       'role': role,
       'username': username,
       'createdAt': createdAt.toIso8601String(),
+      'status': status,
     };
   }
 
@@ -57,6 +61,7 @@ class User {
     String? role,
     String? username,
     DateTime? createdAt,
+    String? status,
   }) {
     return User(
       id: id ?? this.id,
@@ -67,6 +72,7 @@ class User {
       role: role ?? this.role,
       username: username ?? this.username,
       createdAt: createdAt ?? this.createdAt,
+      status: status ?? this.status,
     );
   }
 }

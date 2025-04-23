@@ -268,4 +268,78 @@ class AuthService extends ChangeNotifier {
       return null;
     }
   }
+
+  Future<List<User>> getAllUsers() async {
+    try {
+      final List<Map<String, dynamic>> maps = await _databaseHelper.query('users');
+      return maps.map((map) => User.fromMap(map)).toList();
+    } catch (e) {
+      debugPrint('Error getting all users: $e');
+      throw Exception('Failed to get users: $e');
+    }
+  }
+
+  Future<void> updateUserStatus(int userId, String status) async {
+    try {
+      final user = await getUserById(userId);
+      if (user == null) throw Exception('User not found');
+
+      final updatedUser = user.copyWith(status: status);
+      await _databaseHelper.update(
+        'users',
+        updatedUser.toMap(),
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error updating user status: $e');
+      throw Exception('Failed to update user status: $e');
+    }
+  }
+
+  Future<void> deleteUser(int userId) async {
+    try {
+      // First check if user exists
+      final user = await getUserById(userId);
+      if (user == null) throw Exception('User not found');
+
+      // Check if user has any active bookings
+      final bookings = await _databaseHelper.query(
+        'bookings',
+        where: 'userId = ? AND status != ?',
+        whereArgs: [userId, 'cancelled'],
+      );
+
+      if (bookings.isNotEmpty) {
+        throw Exception('Cannot delete user with active bookings');
+      }
+
+      // Delete user's bookings
+      await _databaseHelper.delete(
+        'bookings',
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+
+      // Delete user's notifications
+      await _databaseHelper.delete(
+        'notifications',
+        where: 'userId = ?',
+        whereArgs: [userId],
+      );
+
+      // Finally delete the user
+      await _databaseHelper.delete(
+        'users',
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error deleting user: $e');
+      throw Exception('Failed to delete user: $e');
+    }
+  }
 }
