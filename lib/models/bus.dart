@@ -8,6 +8,7 @@ class Bus {
   final String type;
   final bool isActive;
   final String busName;
+  final String registrationNumber;
   final int routeId;
   final String departureTime;
   final String arrivalTime;
@@ -19,6 +20,7 @@ class Bus {
   final String status;
   final DateTime? createdAt;
   final DateTime travelDate;
+  final DateTime? updatedAt;
 
   Bus({
     this.id,
@@ -27,6 +29,7 @@ class Bus {
     required this.type,
     this.isActive = true,
     required this.busName,
+    required this.registrationNumber,
     required this.routeId,
     required this.departureTime,
     required this.arrivalTime,
@@ -37,6 +40,7 @@ class Bus {
     required this.toLocation,
     this.status = 'active',
     this.createdAt,
+    this.updatedAt,
     required this.travelDate,
   });
 
@@ -57,6 +61,7 @@ class Bus {
       'type': type,
       'isActive': isActive ? 1 : 0,
       'busName': busName,
+      'registrationNumber': registrationNumber,
       'routeId': routeId,
       'departureTime': departureTime,
       'arrivalTime': arrivalTime,
@@ -67,6 +72,7 @@ class Bus {
       'toLocation': toLocation,
       'status': status,
       'createdAt': createdAt?.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
       'travelDate': travelDate.toIso8601String(),
     };
   }
@@ -79,6 +85,7 @@ class Bus {
       type: map['type'] as String,
       isActive: map['isActive'] == 1,
       busName: map['busName'] as String,
+      registrationNumber: map['registrationNumber'] as String,
       routeId: map['routeId'] as int,
       departureTime: map['departureTime'] as String,
       arrivalTime: map['arrivalTime'] as String,
@@ -89,6 +96,7 @@ class Bus {
       toLocation: map['toLocation'] as String,
       status: map['status'] ?? 'active',
       createdAt: map['createdAt'] != null ? DateTime.parse(map['createdAt']) : null,
+      updatedAt: map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
       travelDate: DateTime.parse(map['travelDate']),
     );
   }
@@ -100,6 +108,7 @@ class Bus {
     String? type,
     bool? isActive,
     String? busName,
+    String? registrationNumber,
     int? routeId,
     String? departureTime,
     String? arrivalTime,
@@ -110,6 +119,7 @@ class Bus {
     String? toLocation,
     String? status,
     DateTime? createdAt,
+    DateTime? updatedAt,
     DateTime? travelDate,
   }) {
     return Bus(
@@ -119,6 +129,7 @@ class Bus {
       type: type ?? this.type,
       isActive: isActive ?? this.isActive,
       busName: busName ?? this.busName,
+      registrationNumber: registrationNumber ?? this.registrationNumber,
       routeId: routeId ?? this.routeId,
       departureTime: departureTime ?? this.departureTime,
       arrivalTime: arrivalTime ?? this.arrivalTime,
@@ -129,6 +140,7 @@ class Bus {
       toLocation: toLocation ?? this.toLocation,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       travelDate: travelDate ?? this.travelDate,
     );
   }

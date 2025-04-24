@@ -11,6 +11,7 @@ class BookingService extends ChangeNotifier {
   List<Booking> _bookings = [];
   bool _loading = false;
   bool _isInitialized = false;
+  bool _isInitializing = false;
 
   BookingService({
     required DatabaseHelper databaseHelper,
@@ -18,40 +19,57 @@ class BookingService extends ChangeNotifier {
   })  : _databaseHelper = databaseHelper,
         _busService = busService;
 
-  List<Booking> get bookings => _bookings;
+  List<Booking> get bookings => List.unmodifiable(_bookings);
   bool get loading => _loading;
   bool get isInitialized => _isInitialized;
 
   Future<void> initialize() async {
-    if (_isInitialized) return;
+    if (_isInitialized || _isInitializing) return;
 
+    _isInitializing = true;
     _loading = true;
     notifyListeners();
 
     try {
       debugPrint('BookingService: Starting initialization...');
+      
+      // Wait for database to be ready
+      await _databaseHelper.database;
+      
+      // Initialize BusService if needed
       if (!_busService.isInitialized) {
         debugPrint('BookingService: Initializing BusService first...');
         await _busService.initialize();
       }
-      await _databaseHelper.database;
-      await getAllBookings();
+
+      // Load initial bookings
+      final List<Map<String, dynamic>> maps = await _databaseHelper.getAllBookings();
+      _bookings = maps.map((map) => Booking.fromMap(map)).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
       _isInitialized = true;
-      debugPrint('BookingService: Initialization complete');
+      debugPrint('BookingService: Initialization complete with ${_bookings.length} bookings');
     } catch (e, stackTrace) {
       debugPrint('BookingService: Error during initialization: $e');
       debugPrint('BookingService: Stack trace: $stackTrace');
       _isInitialized = false;
+      _bookings = [];
       rethrow;
     } finally {
+      _isInitializing = false;
       _loading = false;
       notifyListeners();
     }
   }
 
   Future<List<Booking>> getAllBookings() async {
-    if (!_isInitialized && !_loading) {
+    if (!_isInitialized) {
       await initialize();
+    }
+
+    if (_loading) {
+      // Return current bookings if we're already loading
+      return _bookings;
     }
 
     _loading = true;
@@ -63,12 +81,11 @@ class BookingService extends ChangeNotifier {
       _bookings = maps.map((map) => Booking.fromMap(map)).toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       debugPrint('BookingService: Loaded ${_bookings.length} bookings');
-      return _bookings;
+      return List.unmodifiable(_bookings);
     } catch (e, stackTrace) {
       debugPrint('BookingService: Error loading bookings: $e');
       debugPrint('BookingService: Stack trace: $stackTrace');
-      _bookings = [];
-      return [];
+      return _bookings; // Return current bookings on error
     } finally {
       _loading = false;
       notifyListeners();
@@ -99,7 +116,7 @@ class BookingService extends ChangeNotifier {
       // Update bus available seats
       await _busService.updateBusAvailability(
         booking.busId,
-        (bus.availableSeats! - booking.numberOfSeats).toInt(),
+        (bus.availableSeats - booking.numberOfSeats).toInt(),
       );
 
       await getAllBookings();
@@ -213,7 +230,7 @@ class BookingService extends ChangeNotifier {
 
       await _busService.updateBusAvailability(
         bus.id!,
-        (bus.availableSeats! + booking.numberOfSeats).toInt(),
+        (bus.availableSeats + booking.numberOfSeats).toInt(),
       );
 
       // Force refresh and notify listeners

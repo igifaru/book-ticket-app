@@ -88,7 +88,7 @@ class _ManageBusesScreenState extends State<ManageBusesScreen> {
       _departureTimeController.text = bus.departureTime;
       _arrivalTimeController.text = bus.arrivalTime;
       _dateController.text = bus.travelDate != null 
-          ? DateFormat('yyyy-MM-dd').format(bus.travelDate!)
+          ? DateFormat('yyyy-MM-dd').format(bus.travelDate)
           : '';
       
       // Find the route for this bus

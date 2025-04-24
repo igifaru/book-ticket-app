@@ -147,15 +147,15 @@ class DatabaseHelper {
 
       // Create routes table
       await db.execute('''
-        CREATE TABLE $tableRoutes (
+        CREATE TABLE IF NOT EXISTS routes(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          startLocation TEXT NOT NULL,
-          endLocation TEXT NOT NULL,
-          viaLocations TEXT,
-          description TEXT,
+          fromLocation TEXT NOT NULL,
+          toLocation TEXT NOT NULL,
           distance REAL NOT NULL,
-          estimatedDuration INTEGER NOT NULL,
-          isActive INTEGER NOT NULL DEFAULT 1
+          duration REAL NOT NULL,
+          price REAL NOT NULL,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
         )
       ''');
 
@@ -352,14 +352,17 @@ class DatabaseHelper {
   }
 
   Future<List<Map<String, dynamic>>> getAllRoutes() async {
-    return await query(tableRoutes);
+    final db = await database;
+    return await db.query('routes');
   }
 
   Future<Map<String, dynamic>?> getRouteById(int id) async {
-    final results = await query(
-      tableRoutes,
+    final db = await database;
+    final results = await db.query(
+      'routes',
       where: 'id = ?',
       whereArgs: [id],
+      limit: 1,
     );
     return results.isNotEmpty ? results.first : null;
   }
@@ -504,21 +507,24 @@ class DatabaseHelper {
   }
 
   Future<int> insertRoute(Map<String, dynamic> route) async {
-    return await insert(tableRoutes, route);
+    final db = await database;
+    return await db.insert('routes', route);
   }
 
-  Future<int> updateRoute(int id, Map<String, dynamic> route) async {
-    return await update(
-      tableRoutes,
+  Future<int> updateRoute(Map<String, dynamic> route) async {
+    final db = await database;
+    return await db.update(
+      'routes',
       route,
       where: 'id = ?',
-      whereArgs: [id],
+      whereArgs: [route['id']],
     );
   }
 
   Future<int> deleteRoute(int id) async {
-    return await delete(
-      tableRoutes,
+    final db = await database;
+    return await db.delete(
+      'routes',
       where: 'id = ?',
       whereArgs: [id],
     );

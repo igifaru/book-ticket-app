@@ -11,6 +11,8 @@ import '../../services/payment_service.dart';
 import '../../models/booking.dart';
 import '../../models/payment.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../widgets/dashboard/bar_chart_widget.dart';
+import '../../widgets/dashboard/line_chart_widget.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({Key? key}) : super(key: key);
@@ -30,19 +32,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<Booking> _bookings = [];
   List<Payment> _payments = [];
   bool _isInitialized = false;
+  late BookingService _bookingService;
+  late PaymentService _paymentService;
   
   @override
-  void initState() {
-    super.initState();
-    _initializeData();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInitialized) {
+      _bookingService = Provider.of<BookingService>(context, listen: false);
+      _paymentService = Provider.of<PaymentService>(context, listen: false);
+      _initializeData();
+    }
   }
 
   @override
   void dispose() {
-    final bookingService = context.read<BookingService>();
-    final paymentService = context.read<PaymentService>();
-    bookingService.removeListener(_onBookingServiceChanged);
-    paymentService.removeListener(_onPaymentServiceChanged);
+    if (_isInitialized) {
+      _bookingService.removeListener(_onBookingServiceChanged);
+      _paymentService.removeListener(_onPaymentServiceChanged);
+    }
     super.dispose();
   }
 
@@ -55,23 +63,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     try {
       debugPrint('ReportsScreen: Starting initialization...');
-      final bookingService = context.read<BookingService>();
-      final paymentService = context.read<PaymentService>();
 
       // Initialize services in correct order
       debugPrint('ReportsScreen: Initializing BookingService...');
-      if (!bookingService.isInitialized) {
-        await bookingService.initialize();
+      if (!_bookingService.isInitialized) {
+        await _bookingService.initialize();
       }
 
       debugPrint('ReportsScreen: Initializing PaymentService...');
-      if (!paymentService.isInitialized) {
-        await paymentService.initialize();
+      if (!_paymentService.isInitialized) {
+        await _paymentService.initialize();
       }
 
       // Add listeners after initialization
-      bookingService.addListener(_onBookingServiceChanged);
-      paymentService.addListener(_onPaymentServiceChanged);
+      _bookingService.addListener(_onBookingServiceChanged);
+      _paymentService.addListener(_onPaymentServiceChanged);
 
       debugPrint('ReportsScreen: Loading initial data...');
       await _loadData();
@@ -108,13 +114,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     
     try {
       debugPrint('ReportsScreen: Loading data...');
-      final bookingService = context.read<BookingService>();
-      final paymentService = context.read<PaymentService>();
 
       // Load data in parallel
       final results = await Future.wait([
-        bookingService.getAllBookings(),
-        paymentService.getAllPayments(),
+        _bookingService.getAllBookings(),
+        _paymentService.getAllPayments(),
       ]);
 
       if (!mounted) return;
@@ -131,7 +135,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       setState(() {
         _error = 'Error loading data. Please try again.';
       });
-      rethrow;
     }
   }
 

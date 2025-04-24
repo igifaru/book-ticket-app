@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:bus_ticket_booking/utils/database_helper.dart';
 import 'package:bus_ticket_booking/models/user.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService extends ChangeNotifier {
   final DatabaseHelper _databaseHelper;
@@ -10,14 +11,17 @@ class AuthService extends ChangeNotifier {
   bool _initialized = false;
   bool _initializing = false;
   final List<VoidCallback> _listeners = [];
+  final SharedPreferences _prefs;
 
-  AuthService({required DatabaseHelper databaseHelper})
-    : _databaseHelper = databaseHelper {
+  AuthService({required DatabaseHelper databaseHelper, required SharedPreferences prefs})
+    : _databaseHelper = databaseHelper,
+      _prefs = prefs {
     debugPrint('AuthService: Created');
   }
 
   User? get currentUser => _currentUser;
   bool get isInitialized => _initialized;
+  bool get isAuthenticated => _prefs.getBool('isAuthenticated') ?? false;
 
   Future<void> initialize() async {
     if (_initialized || _initializing) {
@@ -341,5 +345,22 @@ class AuthService extends ChangeNotifier {
       debugPrint('Error deleting user: $e');
       throw Exception('Failed to delete user: $e');
     }
+  }
+
+  Future<void> signIn(String username, String password) async {
+    if (!_initialized) await initialize();
+    
+    // TODO: Implement actual authentication logic
+    await _prefs.setBool('isAuthenticated', true);
+    await _prefs.setString('currentUser', username);
+    notifyListeners();
+  }
+  
+  Future<void> signOut() async {
+    if (!_initialized) await initialize();
+    
+    await _prefs.setBool('isAuthenticated', false);
+    await _prefs.remove('currentUser');
+    notifyListeners();
   }
 }

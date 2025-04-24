@@ -4,133 +4,98 @@ import '../utils/database_helper.dart';
 
 class RouteService extends ChangeNotifier {
   final DatabaseHelper _databaseHelper;
-  List<Route> _routes = [];
+  bool _isInitialized = false;
   bool _loading = false;
-  bool _initialized = false;
+  List<BusRoute> _routes = [];
 
-  RouteService({
-    required DatabaseHelper databaseHelper,
-  }) : _databaseHelper = databaseHelper;
+  RouteService({required DatabaseHelper databaseHelper}) : _databaseHelper = databaseHelper;
 
-  List<Route> get routes => _routes;
+  bool get isInitialized => _isInitialized;
   bool get loading => _loading;
-  bool get initialized => _initialized;
+  List<BusRoute> get routes => List.unmodifiable(_routes);
 
   Future<void> initialize() async {
-    if (_initialized) return;
-    
-    _loading = true;
-    notifyListeners();
+    if (_isInitialized) return;
+
     try {
-      await loadRoutes();
-      _initialized = true;
-      _loading = false;
+      _loading = true;
       notifyListeners();
+      await _loadRoutes();
+      _isInitialized = true;
     } catch (e) {
-      debugPrint('RouteService: Error during initialization: $e');
-      _loading = false;
-      notifyListeners();
+      debugPrint('RouteService: Error initializing service: $e');
       rethrow;
+    } finally {
+      _loading = false;
+      notifyListeners();
     }
   }
 
-  Future<void> loadRoutes() async {
-    try {
-      final List<Map<String, dynamic>> maps = await _databaseHelper.getAllRoutes();
-      _routes = maps.map((map) => Route.fromMap(map)).toList();
-    } catch (e) {
-      debugPrint('Error loading routes: $e');
-      _routes = [];
-    }
+  Future<void> _loadRoutes() async {
+    final routeMaps = await _databaseHelper.getAllRoutes();
+    _routes = routeMaps.map((map) => BusRoute.fromMap(map)).toList();
   }
 
-  Future<List<Route>> getAllRoutes() async {
-    if (!_initialized) {
-      await initialize();
-    }
+  Future<List<BusRoute>> getAllRoutes() async {
+    if (!_isInitialized) await initialize();
     return _routes;
   }
 
-  Future<Route?> getRouteById(int id) async {
-    try {
-      final map = await _databaseHelper.getRouteById(id);
-      return map != null ? Route.fromMap(map) : null;
-    } catch (e) {
-      debugPrint('Error getting route by id: $e');
-      return null;
-    }
+  Future<BusRoute?> getRouteById(int id) async {
+    if (!_isInitialized) await initialize();
+    return _routes.firstWhere((route) => route.id == id);
   }
 
-  Future<Route> createRoute(Route route) async {
-    try {
-      final id = await _databaseHelper.insertRoute(route.toMap());
-      final newRoute = route.copyWith(id: id);
-      _routes.add(newRoute);
+  Future<BusRoute> addRoute(BusRoute route) async {
+    if (!_isInitialized) await initialize();
+
+    final id = await _databaseHelper.insertRoute(route.toMap());
+    final newRoute = route.copyWith(id: id);
+    _routes.add(newRoute);
+    notifyListeners();
+    return newRoute;
+  }
+
+  Future<void> updateRoute(BusRoute route) async {
+    if (!_isInitialized) await initialize();
+
+    await _databaseHelper.updateRoute(route.toMap());
+    final index = _routes.indexWhere((r) => r.id == route.id);
+    if (index != -1) {
+      _routes[index] = route;
       notifyListeners();
-      return newRoute;
-    } catch (e) {
-      debugPrint('Error creating route: $e');
-      rethrow;
-    }
-  }
-
-  Future<Route> updateRoute(Route route) async {
-    try {
-      if (route.id == null) throw Exception('Route ID is required for update');
-      await _databaseHelper.updateRoute(route.id!, route.toMap());
-      final index = _routes.indexWhere((r) => r.id == route.id);
-      if (index != -1) {
-        _routes[index] = route;
-        notifyListeners();
-      }
-      return route;
-    } catch (e) {
-      debugPrint('Error updating route: $e');
-      rethrow;
     }
   }
 
   Future<void> deleteRoute(int id) async {
-    try {
-      await _databaseHelper.deleteRoute(id);
-      _routes.removeWhere((r) => r.id == id);
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error deleting route: $e');
-      rethrow;
-    }
+    if (!_isInitialized) await initialize();
+
+    await _databaseHelper.deleteRoute(id);
+    _routes.removeWhere((route) => route.id == id);
+    notifyListeners();
   }
 
-  Future<List<Route>> searchRoutes(String query) async {
-    try {
-      final List<Map<String, dynamic>> results = await _databaseHelper.query(
-        'routes',
-        where: 'startLocation LIKE ? OR endLocation LIKE ?',
-        whereArgs: ['%$query%', '%$query%'],
-      );
-      return results.map((map) => Route.fromMap(map)).toList();
-    } catch (e) {
-      throw Exception('Failed to search routes: $e');
-    }
+  Future<List<BusRoute>> searchRoutes(String query) async {
+    if (!_isInitialized) await initialize();
+
+    final lowercaseQuery = query.toLowerCase();
+    return _routes.where((route) {
+      return route.fromLocation.toLowerCase().contains(lowercaseQuery) ||
+             route.toLocation.toLowerCase().contains(lowercaseQuery);
+    }).toList();
   }
 
-  List<Route> get activeRoutes => _routes.where((route) => route.isActive).toList();
-
-  Future<void> toggleRouteStatus(int id) async {
-    final route = _routes.firstWhere((r) => r.id == id);
-    final updatedRoute = route.copyWith(isActive: !route.isActive);
-    await updateRoute(updatedRoute);
+  Future<List<BusRoute>> getPopularRoutes({int limit = 5}) async {
+    if (!_isInitialized) await initialize();
+    
+    // TODO: Implement actual popularity calculation based on bookings
+    // For now, return the first 5 routes
+    return _routes.take(limit).toList();
   }
 
-  List<String> getAllLocations() {
-    final Set<String> locations = {};
-    for (final route in _routes) {
-      locations.add(route.startLocation);
-      locations.add(route.endLocation);
-      if (route.viaLocations.isNotEmpty) {
-        locations.add(route.viaLocations);
-      }
-    }
-    return locations.toList()..sort();
+  void dispose() {
+    _isInitialized = false;
+    _routes.clear();
+    super.dispose();
   }
 }

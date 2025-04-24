@@ -71,4 +71,83 @@ class Route {
   String toString() {
     return '$startLocation to $endLocation via $viaLocations';
   }
+}
+
+class BusRoute {
+  final int? id;
+  final String fromLocation;
+  final String toLocation;
+  final double distance;
+  final double duration;
+  final double price;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  String get startLocation => fromLocation;
+  String get endLocation => toLocation;
+
+  BusRoute({
+    this.id,
+    required this.fromLocation,
+    required this.toLocation,
+    required this.distance,
+    required this.duration,
+    required this.price,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? DateTime.now();
+
+  factory BusRoute.fromMap(Map<String, dynamic> map) {
+    return BusRoute(
+      id: map['id'] as int?,
+      fromLocation: map['fromLocation'] as String,
+      toLocation: map['toLocation'] as String,
+      distance: (map['distance'] as num).toDouble(),
+      duration: (map['duration'] as num).toDouble(),
+      price: (map['price'] as num).toDouble(),
+      createdAt: DateTime.parse(map['createdAt'] as String),
+      updatedAt: DateTime.parse(map['updatedAt'] as String),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'fromLocation': fromLocation,
+      'toLocation': toLocation,
+      'distance': distance,
+      'duration': duration,
+      'price': price,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+    };
+  }
+
+  BusRoute copyWith({
+    int? id,
+    String? fromLocation,
+    String? toLocation,
+    double? distance,
+    double? duration,
+    double? price,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return BusRoute(
+      id: id ?? this.id,
+      fromLocation: fromLocation ?? this.fromLocation,
+      toLocation: toLocation ?? this.toLocation,
+      distance: distance ?? this.distance,
+      duration: duration ?? this.duration,
+      price: price ?? this.price,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'BusRoute(id: $id, fromLocation: $fromLocation, toLocation: $toLocation, distance: $distance, duration: $duration, price: $price)';
+  }
 } 

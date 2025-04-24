@@ -97,16 +97,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: Colors.grey,
                         ),
                       ),
-                      if (_user!.phone != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          _user!.phone!,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey,
-                          ),
+                      ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _user!.phone!,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
                         ),
-                      ],
+                      ),
+                    ],
                     ],
                   ),
                 ),
