@@ -3,6 +3,8 @@ import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -23,6 +25,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   bool _isInitializing = false;
+  final Completer<void> _initCompleter = Completer<void>();
 
   Future<Database> get database async {
     debugPrint('DatabaseHelper: Getting database instance');
@@ -30,214 +33,141 @@ class DatabaseHelper {
       debugPrint('DatabaseHelper: Returning existing database instance');
       return _database!;
     }
-    
-    // Wait if initialization is in progress
-    while (_isInitializing) {
-      debugPrint('DatabaseHelper: Waiting for initialization to complete...');
-      await Future.delayed(const Duration(milliseconds: 100));
+
+    if (_isInitializing) {
+      debugPrint('DatabaseHelper: Waiting for initialization to complete');
+      await _initCompleter.future;
+      return _database!;
     }
-    
+
+    await _initializeDatabase();
+    return _database!;
+  }
+
+  Future<void> _initializeDatabase() async {
+    if (_isInitializing) {
+      await _initCompleter.future;
+      return;
+    }
+
     _isInitializing = true;
     try {
-      debugPrint('DatabaseHelper: Initializing new database instance');
-      _database = await init();
+      debugPrint('DatabaseHelper: Starting database initialization');
+      
+      // Get database path
+      final documentsDirectory = await getApplicationDocumentsDirectory();
+      final path = join(documentsDirectory.path, 'bus_booking.db');
+      debugPrint('DatabaseHelper: Database path: $path');
+
+      // Make sure the directory exists
+      try {
+        await Directory(dirname(path)).create(recursive: true);
+      } catch (e) {
+        debugPrint('DatabaseHelper: Error creating directory: $e');
+      }
+
+      // Open database
+      _database = await openDatabase(
+        path,
+        version: 1,
+        onCreate: (Database db, int version) async {
+          debugPrint('DatabaseHelper: Creating database tables');
+          await _createTables(db);
+          await _createDefaultAdmin(db);
+        },
+        onOpen: (Database db) async {
+          debugPrint('DatabaseHelper: Database opened, checking tables');
+          await _ensureTablesExist(db);
+        },
+      );
+
       debugPrint('DatabaseHelper: Database initialization successful');
-      return _database!;
-    } catch (e) {
-      debugPrint('DatabaseHelper: Error initializing database: $e');
-      _isInitializing = false;
+      _initCompleter.complete();
+    } catch (e, stackTrace) {
+      debugPrint('DatabaseHelper: Error initializing database: $e\n$stackTrace');
+      _initCompleter.completeError(e);
       rethrow;
     } finally {
       _isInitializing = false;
     }
   }
 
-  Future<Database> init() async {
-    debugPrint('DatabaseHelper: Starting database initialization');
-    
-    try {
-      // Get the database path
-      String databasesPath;
-      if (Platform.isAndroid) {
-        debugPrint('DatabaseHelper: Getting Android documents directory');
-        final documentsDirectory = await getApplicationDocumentsDirectory();
-        databasesPath = documentsDirectory.path;
-      } else {
-        debugPrint('DatabaseHelper: Getting default database path');
-        databasesPath = await getDatabasesPath();
-      }
-      
-      final path = join(databasesPath, 'bus_booking.db');
-      debugPrint('DatabaseHelper: Database path: $path');
+  Future<void> _createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableUsers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user'
+      )
+    ''');
 
-      // Make sure the directory exists
-      try {
-        debugPrint('DatabaseHelper: Creating database directory');
-        await Directory(dirname(path)).create(recursive: true);
-      } catch (e) {
-        debugPrint('DatabaseHelper: Error creating directory: $e');
-      }
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableRoutes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        fromLocation TEXT NOT NULL,
+        toLocation TEXT NOT NULL,
+        distance REAL NOT NULL
+      )
+    ''');
 
-      // Open the database
-      debugPrint('DatabaseHelper: Opening database');
-      final db = await openDatabase(
-        path,
-        version: 2,
-        onCreate: (Database db, int version) async {
-          debugPrint('DatabaseHelper: Creating tables...');
-          await _createTables(db);
-          await _createDefaultAdmin(db);
-        },
-        onUpgrade: (db, oldVersion, newVersion) async {
-          debugPrint('DatabaseHelper: Upgrading database from $oldVersion to $newVersion');
-          
-          // Drop and recreate the buses table
-          await db.execute('DROP TABLE IF EXISTS buses');
-          
-          // Create buses table with correct schema
-          await db.execute('''
-            CREATE TABLE buses (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              busNumber TEXT NOT NULL,
-              capacity INTEGER NOT NULL,
-              type TEXT NOT NULL,
-              isActive INTEGER DEFAULT 1,
-              busName TEXT NOT NULL,
-              routeId INTEGER NOT NULL,
-              departureTime TEXT NOT NULL,
-              arrivalTime TEXT NOT NULL,
-              totalSeats INTEGER NOT NULL,
-              availableSeats INTEGER NOT NULL,
-              price REAL NOT NULL,
-              fromLocation TEXT NOT NULL,
-              toLocation TEXT NOT NULL,
-              status TEXT DEFAULT 'active',
-              createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-              travelDate TEXT NOT NULL,
-              FOREIGN KEY (routeId) REFERENCES routes (id)
-            )
-          ''');
-        },
-      );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableBuses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        busNumber TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        capacity INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        price REAL NOT NULL,
+        routeId INTEGER,
+        departureTime TEXT NOT NULL,
+        arrivalTime TEXT NOT NULL,
+        travelDate TEXT NOT NULL,
+        FOREIGN KEY (routeId) REFERENCES $tableRoutes (id)
+      )
+    ''');
 
-      debugPrint('DatabaseHelper: Database opened successfully');
-      return db;
-    } catch (e) {
-      debugPrint('DatabaseHelper: Error in init: $e');
-      rethrow;
-    }
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableBookings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        busId INTEGER NOT NULL,
+        seats INTEGER NOT NULL,
+        totalAmount REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        createdAt TEXT NOT NULL,
+        FOREIGN KEY (userId) REFERENCES $tableUsers (id),
+        FOREIGN KEY (busId) REFERENCES $tableBuses (id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableNotifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER,
+        message TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        isRead INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (userId) REFERENCES $tableUsers (id)
+      )
+    ''');
   }
 
-  Future<void> _createTables(Database db) async {
-    debugPrint('DatabaseHelper: Creating tables');
-    try {
-      // Create users table
-      await db.execute('''
-        CREATE TABLE $tableUsers (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          email TEXT UNIQUE NOT NULL,
-          phone TEXT NOT NULL,
-          password TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'user',
-          username TEXT,
-          createdAt TEXT NOT NULL
-        )
-      ''');
-
-      // Create routes table
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS routes(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fromLocation TEXT NOT NULL,
-          toLocation TEXT NOT NULL,
-          distance REAL NOT NULL,
-          duration REAL NOT NULL,
-          price REAL NOT NULL,
-          createdAt TEXT NOT NULL,
-          updatedAt TEXT NOT NULL
-        )
-      ''');
-
-      // Create buses table with correct schema
-      await db.execute('''
-        CREATE TABLE buses (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          busNumber TEXT NOT NULL,
-          capacity INTEGER NOT NULL,
-          type TEXT NOT NULL,
-          isActive INTEGER DEFAULT 1,
-          busName TEXT NOT NULL,
-          routeId INTEGER NOT NULL,
-          departureTime TEXT NOT NULL,
-          arrivalTime TEXT NOT NULL,
-          totalSeats INTEGER NOT NULL,
-          availableSeats INTEGER NOT NULL,
-          price REAL NOT NULL,
-          fromLocation TEXT NOT NULL,
-          toLocation TEXT NOT NULL,
-          status TEXT DEFAULT 'active',
-          createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-          travelDate TEXT NOT NULL,
-          FOREIGN KEY (routeId) REFERENCES routes (id)
-        )
-      ''');
-
-      // Create bookings table
-      await db.execute('''
-        CREATE TABLE $tableBookings (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          userId INTEGER NOT NULL,
-          busId INTEGER NOT NULL,
-          numberOfSeats INTEGER NOT NULL,
-          totalAmount REAL NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending',
-          paymentStatus TEXT NOT NULL DEFAULT 'pending',
-          fromLocation TEXT NOT NULL,
-          toLocation TEXT NOT NULL,
-          bookingDate TEXT NOT NULL,
-          journeyDate TEXT NOT NULL,
-          seatNumber TEXT NOT NULL,
-          createdAt TEXT NOT NULL,
-          confirmedBy INTEGER,
-          confirmedAt TEXT,
-          FOREIGN KEY (userId) REFERENCES $tableUsers (id),
-          FOREIGN KEY (busId) REFERENCES $tableBuses (id),
-          FOREIGN KEY (confirmedBy) REFERENCES $tableUsers (id)
-        )
-      ''');
-
-      // Create payments table
-      await db.execute('''
-        CREATE TABLE $tablePayments (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          bookingId INTEGER NOT NULL,
-          amount REAL NOT NULL,
-          paymentMethod TEXT NOT NULL,
-          transactionId TEXT NOT NULL,
-          paymentDate TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending',
-          FOREIGN KEY (bookingId) REFERENCES $tableBookings (id)
-        )
-      ''');
-
-      // Create notifications table
-      await db.execute('''
-        CREATE TABLE $tableNotifications (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          userId INTEGER,
-          message TEXT NOT NULL,
-          createdAt TEXT NOT NULL,
-          isRead INTEGER NOT NULL DEFAULT 0,
-          FOREIGN KEY (userId) REFERENCES $tableUsers (id)
-        )
-      ''');
-
-      debugPrint('DatabaseHelper: Tables created successfully');
-    } catch (e) {
-      debugPrint('DatabaseHelper: Error creating tables: $e');
-      rethrow;
+  Future<void> _ensureTablesExist(Database db) async {
+    final tables = [tableUsers, tableRoutes, tableBuses, tableBookings, tableNotifications];
+    for (final table in tables) {
+      final count = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM sqlite_master WHERE type="table" AND name=?', [table])
+      );
+      if (count == 0) {
+        debugPrint('DatabaseHelper: Table $table not found, creating tables');
+        await _createTables(db);
+        break;
+      }
     }
+    await _ensureAdminExists(db);
   }
 
   Future<void> _createDefaultAdmin(Database db) async {
@@ -246,41 +176,29 @@ class DatabaseHelper {
       await db.insert(tableUsers, {
         'name': 'System Administrator',
         'email': 'admin@gmail.com',
-        'phone': '1234567890',
         'password': 'admin123',
-        'role': 'admin',
-        'username': 'admin',
-        'createdAt': DateTime.now().toIso8601String()
+        'role': 'admin'
       });
       debugPrint('DatabaseHelper: Default admin user created successfully');
     } catch (e) {
       debugPrint('DatabaseHelper: Error creating default admin: $e');
-      rethrow;
     }
   }
 
-  Future<void> ensureAdminExists() async {
-    debugPrint('DatabaseHelper: Ensuring admin user exists');
-    try {
-      final db = _database;
-      if (db == null) {
-        debugPrint('DatabaseHelper: Database not initialized');
-        return;
-      }
+  Future<void> _ensureAdminExists(Database db) async {
+    final adminCount = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM $tableUsers WHERE role = ?', ['admin'])
+    );
+    if (adminCount == 0) {
+      await _createDefaultAdmin(db);
+    }
+  }
 
-      final List<Map<String, dynamic>> users = await db.query(
-        tableUsers,
-        where: 'email = ?',
-        whereArgs: ['admin@gmail.com'],
-      );
-
-      if (users.isEmpty) {
-        debugPrint('DatabaseHelper: Creating default admin user');
-        await _createDefaultAdmin(db);
-      }
-    } catch (e) {
-      debugPrint('DatabaseHelper: Error ensuring admin exists: $e');
-      rethrow;
+  Future<void> close() async {
+    final db = _database;
+    if (db != null) {
+      await db.close();
+      _database = null;
     }
   }
 
@@ -342,13 +260,6 @@ class DatabaseHelper {
       where: where,
       whereArgs: whereArgs,
     );
-  }
-
-  Future<void> close() async {
-    if (_database != null) {
-      await _database!.close();
-      _database = null;
-    }
   }
 
   Future<List<Map<String, dynamic>>> getAllRoutes() async {

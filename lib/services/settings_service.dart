@@ -4,6 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsService extends ChangeNotifier {
   final SharedPreferences _prefs;
   bool _isInitialized = false;
+  bool _isDarkMode = false;
+  String _language = 'en';
+  bool _notificationsEnabled = true;
   
   // Default values
   static const _defaultLanguage = 'English';
@@ -44,10 +47,11 @@ class SettingsService extends ChangeNotifier {
 
   // Getters
   bool get isInitialized => _isInitialized;
-  String get language => _prefs.getString(_languageKey) ?? _defaultLanguage;
+  bool get isDarkMode => _isDarkMode;
+  String get language => _language;
   String get currency => _prefs.getString(_currencyKey) ?? _defaultCurrency;
   String get timeZone => _prefs.getString(_timeZoneKey) ?? _defaultTimeZone;
-  bool get notifications => _prefs.getBool(_notificationsKey) ?? _defaultNotificationsEnabled;
+  bool get notificationsEnabled => _notificationsEnabled;
   bool get emailNotifications => _prefs.getBool(_emailNotificationsKey) ?? _defaultEmailNotifications;
   bool get pushNotifications => _prefs.getBool(_pushNotificationsKey) ?? _defaultPushNotifications;
   bool get smsNotifications => _prefs.getBool(_smsNotificationsKey) ?? _defaultSmsNotifications;
@@ -68,16 +72,17 @@ class SettingsService extends ChangeNotifier {
     
     try {
       debugPrint('SettingsService: Starting initialization...');
-      // Load any necessary initial settings
+      _isDarkMode = _prefs.getBool('darkMode') ?? false;
+      _language = _prefs.getString('language') ?? 'en';
+      _notificationsEnabled = _prefs.getBool('notifications') ?? true;
       await loadSettings();
       _isInitialized = true;
       debugPrint('SettingsService: Initialization complete');
+      notifyListeners();
     } catch (e) {
       debugPrint('SettingsService: Error during initialization: $e');
-      _isInitialized = false;
       rethrow;
     }
-    notifyListeners();
   }
 
   // Load settings
@@ -175,5 +180,26 @@ class SettingsService extends ChangeNotifier {
       debugPrint('SettingsService: Error clearing cache: $e');
       rethrow;
     }
+  }
+
+  Future<void> setDarkMode(bool value) async {
+    if (!_isInitialized) await initialize();
+    _isDarkMode = value;
+    await _prefs.setBool('darkMode', value);
+    notifyListeners();
+  }
+
+  Future<void> setLanguage(String value) async {
+    if (!_isInitialized) await initialize();
+    _language = value;
+    await _prefs.setString('language', value);
+    notifyListeners();
+  }
+
+  Future<void> setNotificationsEnabled(bool value) async {
+    if (!_isInitialized) await initialize();
+    _notificationsEnabled = value;
+    await _prefs.setBool('notifications', value);
+    notifyListeners();
   }
 } 

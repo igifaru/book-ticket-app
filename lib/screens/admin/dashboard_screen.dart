@@ -12,7 +12,7 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -23,141 +23,98 @@ class DashboardScreen extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           
           // Statistics Cards
-          GridView.count(
-            crossAxisCount: 4,
-            shrinkWrap: true,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.5,
-            children: [
-              _buildStatCard(
-                context,
-                title: 'Total Bookings',
-                value: '1,234',
-                icon: Icons.book_online,
-                color: Colors.blue,
-              ),
-              _buildStatCard(
-                context,
-                title: 'Active Routes',
-                value: '45',
-                icon: Icons.route,
-                color: Colors.green,
-              ),
-              _buildStatCard(
-                context,
-                title: 'Available Buses',
-                value: '28',
-                icon: Icons.directions_bus,
-                color: Colors.orange,
-              ),
-              _buildStatCard(
-                context,
-                title: 'Total Revenue',
-                value: 'RWF 2.5M',
-                icon: Icons.attach_money,
-                color: Colors.purple,
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return constraints.maxWidth < 600
+                  ? Column(
+                      children: _buildStatCards(context),
+                    )
+                  : Row(
+                      children: _buildStatCards(context)
+                          .map((card) => Expanded(child: card))
+                          .toList(),
+                    );
+            },
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           
           // Charts Section
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Booking Trends Chart
-              Expanded(
-                flex: 2,
-                child: Card(
-                  color: Colors.grey[850],
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return constraints.maxWidth < 900
+                  ? Column(
+                      children: [
+                        _buildBookingTrendsChart(context),
+                        const SizedBox(height: 16),
+                        _buildPopularRoutesChart(context),
+                      ],
+                    )
+                  : Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Booking Trends',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
+                        Expanded(
+                          flex: 2,
+                          child: _buildBookingTrendsChart(context),
                         ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 300,
-                          child: LineChartWidget(
-                            data: [10, 25, 15, 30, 20, 35, 25],
-                            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                            title: 'Weekly Bookings',
-                          ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildPopularRoutesChart(context),
                         ),
                       ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Popular Routes Chart
-              Expanded(
-                child: Card(
-                  color: Colors.grey[850],
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Popular Routes',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 300,
-                          child: PieChartWidget(
-                            data: [
-                              RouteData(
-                                name: 'Kigali - Butare',
-                                value: 35,
-                                color: Colors.blue,
-                              ),
-                              RouteData(
-                                name: 'Kigali - Gisenyi',
-                                value: 25,
-                                color: Colors.green,
-                              ),
-                              RouteData(
-                                name: 'Kigali - Rwamagana',
-                                value: 20,
-                                color: Colors.orange,
-                              ),
-                              RouteData(
-                                name: 'Others',
-                                value: 20,
-                                color: Colors.grey,
-                              ),
-                            ],
-                            title: 'Route Distribution',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+                    );
+            },
           ),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildStatCards(BuildContext context) {
+    return [
+      Padding(
+        padding: const EdgeInsets.all(8),
+        child: _buildStatCard(
+          context,
+          title: 'Total Bookings',
+          value: '1,234',
+          icon: Icons.book_online,
+          color: Colors.blue.shade400,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.all(8),
+        child: _buildStatCard(
+          context,
+          title: 'Active Routes',
+          value: '45',
+          icon: Icons.route,
+          color: Colors.green.shade400,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.all(8),
+        child: _buildStatCard(
+          context,
+          title: 'Available Buses',
+          value: '28',
+          icon: Icons.directions_bus,
+          color: Colors.orange.shade400,
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.all(8),
+        child: _buildStatCard(
+          context,
+          title: 'Total Revenue',
+          value: 'RWF 2.5M',
+          icon: Icons.attach_money,
+          color: Colors.purple.shade400,
+        ),
+      ),
+    ];
   }
 
   Widget _buildStatCard(
@@ -168,7 +125,8 @@ class DashboardScreen extends StatelessWidget {
     required Color color,
   }) {
     return Card(
-      color: Colors.grey[850],
+      elevation: 4,
+      color: Colors.grey[900],
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -179,7 +137,7 @@ class DashboardScreen extends StatelessWidget {
               color: color,
               size: 32,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
               value,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -187,11 +145,80 @@ class DashboardScreen extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Text(
               title,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.white70,
+                color: Colors.white.withOpacity(0.8),
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBookingTrendsChart(BuildContext context) {
+    return Card(
+      elevation: 4,
+      color: Colors.grey[900],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Booking Trends',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 300,
+              child: LineChartWidget(
+                data: [15, 25, 18, 35, 22, 38, 25],
+                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                title: 'Weekly Bookings',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPopularRoutesChart(BuildContext context) {
+    return Card(
+      elevation: 4,
+      color: Colors.grey[900],
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Popular Routes',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 300,
+              child: PieChartWidget(
+                data: const [35, 25, 20, 20],
+                labels: const [
+                  'Kigali - Butare',
+                  'Kigali - Gisenyi',
+                  'Kigali - Rwamagana',
+                  'Others'
+                ],
+                title: 'Route Distribution',
               ),
             ),
           ],

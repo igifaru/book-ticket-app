@@ -1,5 +1,7 @@
 // lib/main.dart (updated)
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,162 +18,101 @@ import 'models/user.dart';
 import 'models/booking.dart';
 import 'package:flutter/foundation.dart';
 import 'services/settings_service.dart';
+import 'utils/performance_utils.dart';
+import 'widgets/app_loader.dart';
 
-void main() {
-  runApp(const AppLoader());
-}
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize core dependencies
+  final prefs = await SharedPreferences.getInstance();
+  final databaseHelper = DatabaseHelper();
+  
+  // Initialize database first
+  await databaseHelper.database;
 
-class AppLoader extends StatelessWidget {
-  const AppLoader({super.key});
+  // Create services
+  final authService = AuthService(databaseHelper: databaseHelper, prefs: prefs);
+  final routeService = RouteService(databaseHelper: databaseHelper);
+  final busService = BusService(databaseHelper: databaseHelper);
+  final bookingService = BookingService(databaseHelper: databaseHelper, busService: busService);
+  final settingsService = SettingsService(prefs);
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
-      home: FutureBuilder<List<SingleChildWidget>>(
-        future: _initializeApp(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return MaterialApp(
-              theme: ThemeData(
-                primarySwatch: Colors.blue,
-                useMaterial3: true,
-              ),
-              home: Scaffold(
-                body: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Error initializing app: ${snapshot.error}',
-                        style: const TextStyle(color: Colors.red),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          // Rebuild the widget to retry initialization
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (_) => const AppLoader()),
-                          );
-                        },
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }
+  // Pre-initialize critical services
+  await Future.wait([
+    authService.initialize(),
+    settingsService.initialize(),
+  ]);
 
-          if (!snapshot.hasData) {
-            return MaterialApp(
-              theme: ThemeData(
-                primarySwatch: Colors.blue,
-                useMaterial3: true,
-              ),
-              home: const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-            );
-          }
-
-          final providers = snapshot.data!;
-          return MultiProvider(
-            providers: providers,
-            child: const MyApp(),
-          );
-        },
-      ),
-    );
-  }
-
-  Future<List<SingleChildWidget>> _initializeApp() async {
-    try {
-      debugPrint('AppLoader: Starting app initialization...');
-      
-      // Ensure Flutter bindings are initialized
-      WidgetsFlutterBinding.ensureInitialized();
-      debugPrint('AppLoader: Flutter binding initialized');
-      
-      // Initialize SharedPreferences
-      debugPrint('AppLoader: Initializing SharedPreferences...');
-      final prefs = await SharedPreferences.getInstance();
-      debugPrint('AppLoader: SharedPreferences initialized');
-      
-      // Create database helper
-      debugPrint('AppLoader: Creating DatabaseHelper...');
-      final databaseHelper = DatabaseHelper();
-      
-      // Initialize database
-      debugPrint('AppLoader: Initializing database...');
-      await databaseHelper.database;
-      debugPrint('AppLoader: Database initialized');
-
-      // Create services
-      debugPrint('AppLoader: Creating services...');
-      final authService = AuthService(
-        databaseHelper: databaseHelper,
-        prefs: prefs,
-      );
-      final routeService = RouteService(databaseHelper: databaseHelper);
-      final busService = BusService(databaseHelper: databaseHelper);
-      final bookingService = BookingService(
-        databaseHelper: databaseHelper,
-        busService: busService,
-      );
-      final paymentService = PaymentService(databaseHelper, bookingService);
-      final notificationService = NotificationService(databaseHelper: databaseHelper);
-      final settingsService = SettingsService(prefs);
-
-      // Initialize services sequentially to ensure proper dependency order
-      debugPrint('AppLoader: Initializing services...');
-      
-      // Initialize auth first
-      await authService.initialize();
-      debugPrint('AppLoader: Auth service initialized');
-      
-      // Initialize core services
-      await Future.wait([
-        routeService.initialize(),
-        busService.initialize(),
-        settingsService.initialize(),
-      ]);
-      debugPrint('AppLoader: Core services initialized');
-      
-      // Initialize dependent services
-      await Future.wait([
-        bookingService.initialize(),
-        paymentService.initialize(),
-        notificationService.initialize(),
-      ]);
-      debugPrint('AppLoader: Dependent services initialized');
-
-      debugPrint('AppLoader: Creating providers...');
-      return [
+  runApp(
+    MultiProvider(
+      providers: [
         Provider<DatabaseHelper>.value(value: databaseHelper),
         Provider<SharedPreferences>.value(value: prefs),
         ChangeNotifierProvider<AuthService>.value(value: authService),
         ChangeNotifierProvider<RouteService>.value(value: routeService),
         ChangeNotifierProvider<BusService>.value(value: busService),
         ChangeNotifierProvider<BookingService>.value(value: bookingService),
-        ChangeNotifierProvider<PaymentService>.value(value: paymentService),
-        ChangeNotifierProvider<NotificationService>.value(value: notificationService),
         ChangeNotifierProvider<SettingsService>.value(value: settingsService),
-      ];
-    } catch (e, stack) {
-      debugPrint('AppLoader: Error during initialization: $e');
-      debugPrint('AppLoader: Stack trace: $stack');
-      rethrow;
-    }
+      ],
+      child: const AppLoader(
+        child: App(),
+      ),
+    ),
+  );
+}
+
+class AppLoader extends StatelessWidget {
+  const AppLoader({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+        platform: TargetPlatform.android,
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      builder: (context, child) {
+        // Add error boundary
+        ErrorWidget.builder = (FlutterErrorDetails details) {
+          return Material(
+            child: Container(
+              color: Colors.white,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error: ${details.exception}',
+                    style: const TextStyle(color: Colors.red),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        };
+        
+        return MediaQuery(
+          // Prevent text scaling
+          data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
+          child: child!,
+        );
+      },
+      home: child,
+    );
   }
 }
 

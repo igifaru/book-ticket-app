@@ -8,61 +8,66 @@ class BusService extends ChangeNotifier {
   List<Bus> _buses = [];
   bool _loading = false;
   bool _isInitialized = false;
+  bool _initializing = false;
 
   BusService({
     required DatabaseHelper databaseHelper,
-  }) : _databaseHelper = databaseHelper;
+  }) : _databaseHelper = databaseHelper {
+    // Initialize in constructor
+    initialize().catchError((e) {
+      debugPrint('BusService: Error during initialization: $e');
+    });
+  }
 
-  List<Bus> get buses => _buses;
+  List<Bus> get buses => List.unmodifiable(_buses);
   bool get loading => _loading;
   bool get isInitialized => _isInitialized;
 
   Future<void> initialize() async {
-    if (_isInitialized) return;
+    if (_isInitialized || _initializing) return;
 
+    _initializing = true;
     _loading = true;
-    notifyListeners();
     
     try {
       debugPrint('BusService: Starting initialization...');
       await _databaseHelper.database;
-      await getAllBuses();
-      _isInitialized = true;
-      debugPrint('BusService: Initialization complete');
+      
+      // Load buses in a microtask to avoid blocking the UI
+      await Future.microtask(() async {
+        final buses = await _loadBuses();
+        _buses = buses;
+        _isInitialized = true;
+        debugPrint('BusService: Initialization complete with ${buses.length} buses');
+      });
     } catch (e, stackTrace) {
       debugPrint('BusService: Error during initialization: $e');
       debugPrint('BusService: Stack trace: $stackTrace');
       _isInitialized = false;
-      rethrow;
+      _buses = [];
     } finally {
       _loading = false;
+      _initializing = false;
       notifyListeners();
     }
   }
 
-  Future<List<Bus>> getAllBuses() async {
-    if (!_isInitialized && !_loading) {
-      await initialize();
-    }
-
-    _loading = true;
-    notifyListeners();
-    
+  Future<List<Bus>> _loadBuses() async {
     try {
       debugPrint('BusService: Loading all buses...');
       final List<Map<String, dynamic>> maps = await _databaseHelper.getAllBuses();
-      _buses = maps.map((map) => Bus.fromMap(map)).toList();
-      debugPrint('BusService: Loaded ${_buses.length} buses');
-      return _buses;
-    } catch (e, stackTrace) {
+      return maps.map((map) => Bus.fromMap(map)).toList();
+    } catch (e) {
       debugPrint('BusService: Error loading buses: $e');
-      debugPrint('BusService: Stack trace: $stackTrace');
-      _buses = [];
       return [];
-    } finally {
-      _loading = false;
-      notifyListeners();
     }
+  }
+
+  Future<List<Bus>> getAllBuses() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+    return _buses;
   }
 
   Future<Bus?> getBusById(int id) async {
@@ -78,7 +83,10 @@ class BusService extends ChangeNotifier {
   Future<Bus> createBus(Bus bus) async {
     try {
       final id = await _databaseHelper.insertBus(bus.toMap());
-      return bus.copyWith(id: id);
+      final newBus = bus.copyWith(id: id);
+      _buses = [..._buses, newBus];
+      notifyListeners();
+      return newBus;
     } catch (e) {
       debugPrint('Error creating bus: $e');
       rethrow;
@@ -89,6 +97,8 @@ class BusService extends ChangeNotifier {
     try {
       if (bus.id == null) throw Exception('Bus ID is required for update');
       await _databaseHelper.updateBus(bus.id!, bus.toMap());
+      _buses = _buses.map((b) => b.id == bus.id ? bus : b).toList();
+      notifyListeners();
       return bus;
     } catch (e) {
       debugPrint('Error updating bus: $e');
@@ -99,6 +109,8 @@ class BusService extends ChangeNotifier {
   Future<void> deleteBus(int id) async {
     try {
       await _databaseHelper.deleteBus(id);
+      _buses = _buses.where((b) => b.id != id).toList();
+      notifyListeners();
     } catch (e) {
       debugPrint('Error deleting bus: $e');
       rethrow;
@@ -109,38 +121,23 @@ class BusService extends ChangeNotifier {
     required int routeId,
     required String date,
   }) async {
-    try {
-      _loading = true;
-      notifyListeners();
+    if (!_isInitialized) {
+      await initialize();
+    }
 
+    try {
       debugPrint('Searching buses for routeId: $routeId and date: $date');
 
-      // Get all active buses for the route and date
-      final List<Map<String, dynamic>> results = await _databaseHelper.query(
-        'buses',
-        where: 'routeId = ? AND isActive = ?',
-        whereArgs: [routeId, 1],
-      );
+      final buses = _buses.where((bus) {
+        if (bus.routeId != routeId || bus.status != 'active') return false;
+        final busDate = DateFormat('yyyy-MM-dd').format(bus.travelDate);
+        return busDate == date;
+      }).toList();
 
-      debugPrint('Found ${results.length} buses for route $routeId');
-
-      if (results.isEmpty) {
-        debugPrint('No buses found for route $routeId');
+      if (buses.isEmpty) {
+        debugPrint('No buses found for route $routeId and date $date');
         return [];
       }
-
-      final buses = results.map((map) {
-        debugPrint('Bus data: ${map.toString()}');
-        final bus = Bus.fromMap(map);
-        debugPrint('Bus travel date: ${bus.travelDate.toString()}');
-        return bus;
-      }).where((bus) {
-        final busDate = DateFormat('yyyy-MM-dd').format(bus.travelDate);
-        debugPrint('Comparing bus date: $busDate with search date: $date');
-        return busDate == date && bus.status == 'active';
-      }).toList();
-      
-      debugPrint('Found ${buses.length} buses for date $date');
 
       // Get all bookings for the given date to check seat availability
       final bookings = await _databaseHelper.query(
@@ -154,31 +151,16 @@ class BusService extends ChangeNotifier {
       // Calculate available seats for each bus
       final busesWithAvailability = buses.map((bus) {
         final busBookings = bookings.where((booking) => booking['busId'] == bus.id);
-        
-        final bookedSeats = busBookings.fold<int>(
-          0, 
-          (sum, booking) => sum + (booking['numberOfSeats'] as int)
-        );
-        
+        final bookedSeats = busBookings.fold<int>(0, (sum, booking) => sum + (booking['numberOfSeats'] as int));
         final availableSeats = bus.totalSeats - bookedSeats;
-        debugPrint('Bus ${bus.id}: total seats: ${bus.totalSeats}, booked: $bookedSeats, available: $availableSeats');
-        
-        return bus.copyWith(
-          availableSeats: availableSeats
-        );
-      }).toList();
-      
-      // Return only buses with available seats
-      final availableBuses = busesWithAvailability.where((bus) => bus.availableSeats > 0).toList();
-      debugPrint('Returning ${availableBuses.length} available buses');
-      
-      return availableBuses;
+        return bus.copyWith(availableSeats: availableSeats);
+      }).where((bus) => bus.availableSeats > 0).toList();
+
+      debugPrint('Returning ${busesWithAvailability.length} available buses');
+      return busesWithAvailability;
     } catch (e) {
       debugPrint('Error searching buses: $e');
       return [];
-    } finally {
-      _loading = false;
-      notifyListeners();
     }
   }
 

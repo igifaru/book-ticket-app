@@ -1,67 +1,51 @@
 import 'package:flutter/material.dart';
-import 'screens/splash_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'services/auth_service.dart';
+import 'screens/login_screen.dart';
+import 'screens/admin/admin_dashboard.dart';
+import 'screens/user/user_dashboard.dart';
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class App extends StatelessWidget {
+  const App({super.key});
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('MyApp: Building app...');
-    
-    // Set up global error widget handler
-    ErrorWidget.builder = (FlutterErrorDetails errorDetails) {
-      debugPrint('MyApp: Caught error: ${errorDetails.exception}');
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 48),
-              const SizedBox(height: 16),
-              Text(
-                'Error: ${errorDetails.exception}',
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    };
-
     return MaterialApp(
-      title: 'Bus Ticket Booking',
+      title: 'Book Ticket App',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.light(useMaterial3: true).copyWith(
-        primaryColor: Colors.deepPurple,
-        colorScheme: const ColorScheme.light(primary: Colors.deepPurple),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        useMaterial3: true,
       ),
-      darkTheme: ThemeData.dark(useMaterial3: true).copyWith(
-        primaryColor: Colors.deepPurple,
-        scaffoldBackgroundColor: Colors.black,
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.deepPurple,
-          secondary: Colors.deepPurpleAccent,
-          surface: Color(0xFF1E1E1E),
-          background: Colors.black,
-        ),
-      ),
-      themeMode: ThemeMode.dark,
-      builder: (context, child) {
-        debugPrint('MyApp: Building with error handler...');
-        return MediaQuery(
-          // Disable debug banner at MediaQuery level
-          data: MediaQuery.of(context).copyWith(
-            padding: EdgeInsets.zero,
-            viewPadding: EdgeInsets.zero,
-          ),
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
-      home: Builder(
-        builder: (context) {
-          debugPrint('MyApp: Building SplashScreen...');
-          return const SplashScreen();
+      home: Consumer<AuthService>(
+        builder: (context, authService, _) {
+          if (!authService.isInitialized) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!authService.isAuthenticated) {
+            return const LoginScreen();
+          }
+
+          return FutureBuilder<bool>(
+            future: authService.isAdmin(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text('Error: ${snapshot.error}'),
+                );
+              }
+
+              final isAdmin = snapshot.data ?? false;
+              return isAdmin ? const AdminDashboard() : const UserDashboard();
+            },
+          );
         },
       ),
     );

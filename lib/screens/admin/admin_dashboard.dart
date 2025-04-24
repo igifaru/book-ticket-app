@@ -23,76 +23,31 @@ class AdminDashboard extends StatefulWidget {
 
 class _AdminDashboardState extends State<AdminDashboard> {
   int _selectedIndex = 0;
+  final List<Widget> _screens = [
+    const DashboardScreen(),
+    const UsersScreen(),
+    const BusesScreen(),
+    const RoutesScreen(),
+    const BookingsScreen(),
+    const SettingsScreen(),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    // Get services
-    final authService = context.watch<AuthService>();
-    final routeService = context.watch<RouteService>();
-    final busService = context.watch<BusService>();
-    final bookingService = context.watch<BookingService>();
-    final settingsService = context.watch<SettingsService>();
-
-    // Check if any service is not initialized
-    final bool allServicesInitialized = authService.isInitialized &&
-        routeService.isInitialized &&
-        busService.isInitialized &&
-        bookingService.isInitialized &&
-        settingsService.isInitialized;
-
-    if (!allServicesInitialized) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Admin Dashboard'),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    final List<Widget> screens = [
-      const DashboardScreen(),
-      const UsersScreen(),
-      const BusesScreen(),
-      const RoutesScreen(),
-      const BookingsScreen(),
-      const SettingsScreen(),
-    ];
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Dashboard'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Confirm Logout'),
-                  content: const Text('Are you sure you want to log out?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Logout'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (confirmed == true && mounted) {
-                await context.read<AuthService>().logout();
-              }
-            },
+            onPressed: () => _handleLogout(context),
           ),
         ],
       ),
-      body: screens[_selectedIndex],
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -126,5 +81,29 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Logout'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await context.read<AuthService>().logout();
+    }
   }
 }

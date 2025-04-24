@@ -7,58 +7,75 @@ import 'bus_service.dart';
 
 class BookingService extends ChangeNotifier {
   final DatabaseHelper _databaseHelper;
-  final BusService _busService;
+  BusService? _busService;
   List<Booking> _bookings = [];
   bool _loading = false;
   bool _isInitialized = false;
   bool _isInitializing = false;
+  String? _error;
 
   BookingService({
     required DatabaseHelper databaseHelper,
-    required BusService busService,
-  })  : _databaseHelper = databaseHelper,
-        _busService = busService;
+    BusService? busService,
+  }) : _databaseHelper = databaseHelper {
+    _busService = busService;
+  }
 
   List<Booking> get bookings => List.unmodifiable(_bookings);
   bool get loading => _loading;
   bool get isInitialized => _isInitialized;
+  String? get error => _error;
+
+  void setBusService(BusService busService) {
+    _busService = busService;
+    if (!_isInitialized && !_isInitializing) {
+      Future.microtask(() => initialize());
+    }
+  }
 
   Future<void> initialize() async {
     if (_isInitialized || _isInitializing) return;
+    if (_busService == null) {
+      debugPrint('BookingService: Waiting for BusService to be set');
+      return;
+    }
 
     _isInitializing = true;
-    _loading = true;
-    notifyListeners();
+    _error = null;
+    
+    // Use microtask to avoid calling setState during build
+    Future.microtask(() {
+      _loading = true;
+      notifyListeners();
+    });
 
     try {
       debugPrint('BookingService: Starting initialization...');
       
-      // Wait for database to be ready
-      await _databaseHelper.database;
-      
-      // Initialize BusService if needed
-      if (!_busService.isInitialized) {
-        debugPrint('BookingService: Initializing BusService first...');
-        await _busService.initialize();
+      // Wait for bus service to be initialized
+      if (!_busService!.isInitialized) {
+        debugPrint('BookingService: Waiting for BusService to initialize...');
+        await _busService!.initialize();
       }
 
-      // Load initial bookings
-      final List<Map<String, dynamic>> maps = await _databaseHelper.getAllBookings();
-      _bookings = maps.map((map) => Booking.fromMap(map)).toList()
+      // Load all bookings
+      final bookingsData = await _databaseHelper.getAllBookings();
+      _bookings = bookingsData.map((data) => Booking.fromMap(data)).toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      
+
       _isInitialized = true;
       debugPrint('BookingService: Initialization complete with ${_bookings.length} bookings');
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('BookingService: Error during initialization: $e');
-      debugPrint('BookingService: Stack trace: $stackTrace');
-      _isInitialized = false;
+      _error = e.toString();
       _bookings = [];
-      rethrow;
     } finally {
       _isInitializing = false;
       _loading = false;
-      notifyListeners();
+      // Use microtask to avoid calling setState during build
+      Future.microtask(() {
+        notifyListeners();
+      });
     }
   }
 
@@ -103,47 +120,65 @@ class BookingService extends ChangeNotifier {
   }
 
   Future<Booking> createBooking(Booking booking) async {
+    if (!_isInitialized) await initialize();
+    
     try {
-      final bus = await _busService.getBusById(booking.busId);
-      if (bus == null) throw Exception('Bus not found');
+      if (_busService == null) {
+        throw Exception('BusService not available');
+      }
+
+      final bus = await _busService!.getBusById(booking.busId);
+      if (bus == null) {
+        throw Exception('Bus not found');
+      }
 
       if (bus.availableSeats < booking.numberOfSeats) {
         throw Exception('Not enough seats available');
       }
 
-      final bookingId = await _databaseHelper.insertBooking(booking.toMap());
-
+      final id = await _databaseHelper.insertBooking(booking.toMap());
+      final newBooking = booking.copyWith(id: id);
+      
       // Update bus available seats
-      await _busService.updateBusAvailability(
+      await _busService!.updateBusAvailability(
         booking.busId,
-        (bus.availableSeats - booking.numberOfSeats).toInt(),
+        bus.availableSeats - booking.numberOfSeats,
       );
 
-      await getAllBookings();
-      return booking.copyWith(id: bookingId);
+      _bookings.insert(0, newBooking);
+      notifyListeners();
+      return newBooking;
     } catch (e) {
-      debugPrint('Error creating booking: $e');
+      debugPrint('BookingService: Error creating booking: $e');
       rethrow;
     }
   }
 
-  Future<Booking> updateBooking(Booking booking) async {
+  Future<void> updateBooking(Booking booking) async {
+    if (!_isInitialized) await initialize();
+    
     try {
-      if (booking.id == null)
-        throw Exception('Booking ID is required for update');
       await _databaseHelper.updateBooking(booking.id!, booking.toMap());
-      return booking;
+      final index = _bookings.indexWhere((b) => b.id == booking.id);
+      if (index != -1) {
+        _bookings[index] = booking;
+        notifyListeners();
+      }
     } catch (e) {
-      debugPrint('Error updating booking: $e');
+      debugPrint('BookingService: Error updating booking: $e');
       rethrow;
     }
   }
 
   Future<void> deleteBooking(int id) async {
+    if (!_isInitialized) await initialize();
+    
     try {
       await _databaseHelper.deleteBooking(id);
+      _bookings.removeWhere((booking) => booking.id == id);
+      notifyListeners();
     } catch (e) {
-      debugPrint('Error deleting booking: $e');
+      debugPrint('BookingService: Error deleting booking: $e');
       rethrow;
     }
   }
@@ -182,24 +217,26 @@ class BookingService extends ChangeNotifier {
   }
 
   Future<List<Booking>> getBookingsByUserId(int userId) async {
+    if (!_isInitialized) await initialize();
+    
     try {
-      final List<Map<String, dynamic>> maps = await _databaseHelper
-          .getBookingsByUserId(userId);
-      return maps.map((map) => Booking.fromMap(map)).toList();
+      final bookingsData = await _databaseHelper.getBookingsByUserId(userId);
+      return bookingsData.map((data) => Booking.fromMap(data)).toList();
     } catch (e) {
-      debugPrint('Error getting bookings by user id: $e');
-      return [];
+      debugPrint('BookingService: Error getting bookings for user $userId: $e');
+      rethrow;
     }
   }
 
   Future<List<Booking>> getBookingsByBusId(int busId) async {
+    if (!_isInitialized) await initialize();
+    
     try {
-      final List<Map<String, dynamic>> maps = await _databaseHelper
-          .getBookingsByBusId(busId);
-      return maps.map((map) => Booking.fromMap(map)).toList();
+      final bookingsData = await _databaseHelper.getBookingsByBusId(busId);
+      return bookingsData.map((data) => Booking.fromMap(data)).toList();
     } catch (e) {
-      debugPrint('Error getting bookings by bus id: $e');
-      return [];
+      debugPrint('BookingService: Error getting bookings for bus $busId: $e');
+      rethrow;
     }
   }
 
@@ -217,28 +254,42 @@ class BookingService extends ChangeNotifier {
     }
   }
 
-  Future<bool> cancelBooking(int id) async {
+  Future<bool> confirmBooking(int bookingId) async {
     try {
-      final booking = await getBookingById(id);
-      if (booking == null) return false;
+      final booking = _bookings.firstWhere((b) => b.id == bookingId);
+      final updatedBooking = booking.copyWith(status: 'confirmed');
+      await updateBooking(updatedBooking);
+      return true;
+    } catch (e) {
+      debugPrint('BookingService: Error confirming booking: $e');
+      return false;
+    }
+  }
 
-      final bus = await _busService.getBusById(booking.busId);
-      if (bus == null) return false;
+  Future<bool> cancelBooking(int bookingId) async {
+    try {
+      final booking = _bookings.firstWhere((b) => b.id == bookingId);
+      if (_busService == null) {
+        throw Exception('BusService not available');
+      }
+
+      final bus = await _busService!.getBusById(booking.busId);
+      if (bus == null) {
+        throw Exception('Bus not found');
+      }
 
       final updatedBooking = booking.copyWith(status: 'cancelled');
       await updateBooking(updatedBooking);
 
-      await _busService.updateBusAvailability(
+      // Return seats to bus
+      await _busService!.updateBusAvailability(
         bus.id!,
-        (bus.availableSeats + booking.numberOfSeats).toInt(),
+        bus.availableSeats + booking.numberOfSeats,
       );
 
-      // Force refresh and notify listeners
-      _bookings = await getAllBookings();
-      notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Error cancelling booking: $e');
+      debugPrint('BookingService: Error cancelling booking: $e');
       return false;
     }
   }
